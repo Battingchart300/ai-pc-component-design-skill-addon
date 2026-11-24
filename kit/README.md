@@ -49,5 +49,5 @@ Class 0x030000, BAR0 16 MB, BAR2 8192 MB, Tandem on,
 NVMe M.2 2280 x4 + SATA x2, RJ45 1GbE).
 `kit/examples/spec_pi5_hat.json` is a sample Pi 5 HAT addon spec
 that **passes** (PCIe 2.0 x1, 4 layers, CrossLink-NX bridge +
-32× CH32V003, 1 GB DDR4, RJ45 1GbE — no NVMe: the single PCIe
+32× CH32V003, 1 GB DDR3-1066, RJ45 1GbE — no NVMe: the single PCIe
 lane belongs to the FPGA bridge, see SKILL.md §13).
