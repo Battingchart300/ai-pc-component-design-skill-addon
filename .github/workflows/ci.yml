@@ -1,0 +1,35 @@
+name: addon-kit-ci
+
+# Runs the addon kit checks on both example specs, on Python
+# 3.9-3.13, plus a negative test: require_base must FAIL on a
+# misnamed base skill. The base skill is cloned because this
+# addon does not work without it (see SKILL.md §0).
+on: [push, pull_request]
+
+jobs:
+  kit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Clone base skill (required)
+        run: git clone --depth 1 https://github.com/Battingchart300/ai-pcb-design-skill.git ../ai-pcb-design-skill
+      - name: Run addon checks on both examples
+        run: |
+          python kit/run_all.py
+          python kit/run_all.py --addon-spec kit/examples/spec_pi5_hat.json
+      - name: require_base must fail on a misnamed base
+        run: |
+          mkdir -p /tmp/misnamed-base
+          cp ../ai-pcb-design-skill/SKILL.md /tmp/misnamed-base/SKILL.md
+          sed -i 's/^name: ai-pcb-design-skill$/name: ai-pc-component-design-skill-addon/' /tmp/misnamed-base/SKILL.md
+          if python kit/require_base.py --base-skill /tmp/misnamed-base; then
+            echo "FAIL: misnamed base skill was accepted"
+            exit 1
+          fi
+          echo "OK: misnamed base skill rejected (exit 2 as expected)"
