@@ -5,7 +5,7 @@ description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC c
 
 # ai-pc-component-design-skill-addon
 
-**Version:** 0.3.1 — 2026-11-24
+**Version:** 0.3.2 — 2026-11-24
 **What it is:** an addon skill for designing PC components — a custom
 FPGA GPU, its VRAM, and a custom motherboard / RAM — on top of
 `ai-pcb-design-skill`. It adds only the high-speed, FPGA and
@@ -424,17 +424,63 @@ This addon extends the base custom-motherboard capability
 
 ## 9. Software + driver (PC side)
 
-- **Linux DRM/KMS driver (best path):** a kernel module in C
-  that registers the PCIe device (by Vendor ID / Device ID),
-  manages VRAM allocation and sets the monitor resolution.
-- **User-space library (Mesa / Vulkan / OpenGL):** in the
-  open-source Mesa 3D project, a custom backend can translate
-  standard graphics calls from games into instructions for
-  your FPGA.
-- **Windows first sight:** without a custom driver the card
-  shows as "Microsoft Basic Display Adapter" — that is a
-  *success* at stage A6, not a failure. It proves enumeration,
-  class code and BARs work. The custom driver comes after.
+**The driver is the real project. The board is the easy half.**
+A card without a driver is a paperweight that enumerates. Plan
+the driver before ordering the PCB — §10 simulation first,
+driver second, hardware third.
+
+### 9.1 The ladder — each rung is a separate project
+
+1. **Enumeration (weeks):** the PC sees the card: correct class
+   code (0x030000), Vendor/Device ID, BARs map. On Windows it
+   shows as "Microsoft Basic Display Adapter" — that is a
+   *success* at stage A6, not a failure. It proves enumeration,
+   class code and BARs work. No pixels yet.
+2. **Custom Linux PCIe driver (months of learning):** a kernel
+   module in C: probe by Vendor/Device ID, map BARs, DMA
+   transfers, VRAM allocation, interrupts. The Linux PCI core
+   and DRM helpers are reused — that part is NOT written from
+   scratch.
+3. **Dumb framebuffer (the realistic "it shows a picture"
+   goal):** a simple DRM driver (`drm_simple_display_pipe`)
+   that exposes the VRAM as a framebuffer. Linux shows a desktop
+   on your monitor. This is the finish line for a first build.
+4. **3D acceleration (years, team-scale — not a first build):**
+   OpenGL/Vulkan for games needs a full Mesa Gallium3D driver:
+   a shader compiler for YOUR shader ISA, command submission,
+   memory management, synchronization. That is the hardest part
+   of the whole GPU, harder than the board.
+
+### 9.2 "Prerobiť" an existing driver — what that really means
+
+- **You cannot rework AMDGPU, i915 or nouveau to drive your
+  FPGA.** Those drivers are written for one specific chip: its
+  registers, its command stream, its shader instruction set.
+  Pointing them at different hardware is not an edit, it is a
+  rewrite — the hardware backend is new code either way.
+- **What CAN be reused:** the Linux PCI core, DRM/KMS helpers,
+  GEM memory management, and Mesa's Gallium interface plus
+  `softpipe` / `llvmpipe` as reference code for how a driver is
+  structured. You reuse the framework, you write the hardware
+  part.
+- **Windows:** a display driver there means WDDM — no open
+  framework to reuse, signing requirements, and no shortcut.
+  Linux first, Windows much later if ever.
+
+### 9.3 What this means for games (read before promising fps)
+
+- Without rung 4, **games render on the host GPU, not on your
+  card.** The card can only *display* the finished frame.
+  Minecraft, or any OpenGL/Vulkan game, will run exactly as fast
+  as before — the fps comes from the GPU that renders, not the
+  one that displays.
+- A PC card also needs a PC with a **PCIe x16 slot**. A mini PC
+  (e.g. Intel N95) has no such slot — the card physically does
+  not fit. The card belongs in a desktop PC (e.g. the planned
+  1st AI PC), not in the mini PC it was meant to speed up.
+- Rule: **never promise fps from a card whose rung-4 driver
+  does not exist.** A framebuffer is a display, not
+  acceleration.
 
 ---
 
@@ -623,6 +669,95 @@ power rail per group with decoupling per chip (base §4.6).
 The farm is a coprocessor, not a replacement for the bridge —
 without the bridge there is no PCIe.
 
+### 12.5 MCU-cluster GPU — one chip per pixel (bitluni Supercluster 2 style)
+
+Reference build: bitluni, "I made a GPU at home" (YouTube),
+designs + code: github.com/bitluni/Supercluster2. No LICENSE file
+was visible in that repo (checked 2026-11-24) — treat it as
+reference only. Do not copy its files; your board is your own
+work from the architecture described here.
+
+**The idea — no FPGA, no PCIe:** each tiny RISC-V
+microcontroller IS one pixel. It computes its own pixel colour
+(raymarching / patterns) and drives its own RGB LED. The display
+IS the array of chips + LEDs. This is a standalone sculpture /
+raymarcher, not a PC graphics card — there is no PCIe link and
+no monitor output.
+
+**Reference numbers (Supercluster 2 prototype):**
+
+- Workers: 8,192x WCH CH570 (32-bit RISC-V, up to 100 MHz,
+  ~12 KB memory, hardware multiplier, ~$0.13 each in bulk).
+- Controllers: 256x larger controller chips (CH32V208 class),
+  each manages 32 workers.
+- Comms: SPI buses, 32 workers share one bus; controllers
+  coordinate; the host talks to controllers, never to workers
+  directly.
+- Boards: modular blades, each a grid of worker chips + RGB
+  LEDs (one board = 16x32 pixel block), plugged into a central
+  backplane (circular, Cray-1-inspired).
+- Resolution math: pixels = chips. 320x200 needs 64,000 chips
+  (~$8,000 just for the MCUs); Full HD would need 2M+ chips.
+  One chip per pixel does not scale to HD.
+- Power: ~10 mA per worker at 3.3 V. The 8,192-chip prototype
+  draws ~2,161 W (~655 A at 3.3 V) — a 3 kW ATX PSU + custom
+  12 V -> 3.3 V buck converters. Power is the first wall, not
+  logic.
+- Programming: flashing thousands of chips by hand takes weeks.
+  Bitluni modified a 3D printer with pogo pins on the gantry +
+  Python scripts to flash each board. Budget a flashing rig,
+  not just a programmer.
+- Workload: distributed raymarching, synchronized LED patterns.
+  No OpenGL, no Vulkan, no games. See §9.3.
+
+**Design rules for a cluster GPU in this skill:**
+
+- Resolution first: pick the resolution, then the chip count,
+  then the power budget — in that order. Never the other way
+  round.
+- Power budget: I_total = N_workers x ~10 mA (+ controllers).
+  Size the 3.3 V rail and the 12 V -> 3.3 V converters for that
+  current with margin; hundreds of amps need bus bars / thick
+  copper, not traces.
+- Controller tree: 1 controller per ~32 workers, one SPI bus
+  per group.
+- Start small: one blade (e.g. 16x32 = 512 pixels) proves the
+  architecture, the SPI tree, the power and the flashing rig
+  before any bigger array.
+- Video output is the LED array itself. If you want a real
+  monitor signal, that is a separate project — a controller
+  that collects pixels and drives VGA/HDMI (see §13 for the
+  Pi 5 HAT path instead).
+- Cost check before ordering: N_workers x unit price +
+  controllers + LEDs + blades + PSU. The chips are the cheap
+  part.
+
+**Hardware lessons from the build (half a year of work):**
+
+- **No shared clock:** one clock signal for thousands of chips
+  collapses under electrical loading. Every worker gets its own
+  crystal oscillator.
+- **Crosstalk is real at this density:** 6-layer boards with
+  ground planes on the inner layers, traces staggered so signals
+  on adjacent levels do not bleed into each other.
+- **The fab has limits too:** one giant board was too complex
+  for the manufacturer's ordering system — it had to be split
+  into modular blades (32 rows of 32 chips each), each blade
+  split into two pieces and assembled separately. Design in
+  blades from the start, not as a rescue.
+- **First boards will have defects:** defective / intermittent
+  chips, traces that need relocating, MOSI and MISO crossed
+  ("no matter how hard you try, you will get rx and tx wrong
+  on the first try" — bitluni). Budget a respin and a bring-up
+  plan per blade, not per array.
+- **Power is its own project:** 3 kW ATX PSU + high-efficiency
+  buck converters (Murata) for 650+ A at 3.3 V. Cooling: fans
+  in v1, immersion cooling was planned but not used.
+- **Files status:** bitluni planned to publish all design files
+  as open source with the next part; a v2 targeting ~32,000
+  chips was already in development. Check the repo before
+  assuming the files are out.
+
 ---
 
 ## 13. Raspberry Pi 5 HAT — the starter path (v0.2)
@@ -791,6 +926,11 @@ datasheet — never a guessed part.
 - A modern GPU chip (Path B, §12.2) cannot run your own firmware.
   The VBIOS signature lock is hardware, not a setting to turn off.
   Without the donor schematic the chip cannot be wired at all.
+- A card without a rung-4 Mesa driver does not accelerate games
+  — it only displays what the host GPU rendered. See §9.3.
+- A chip-per-pixel GPU needs one chip per pixel — 320x200 is
+  64,000 chips and ~2 kW. It is a showpiece / raymarcher, not
+  a PC card. See §12.5.
 - A Pi 5 HAT (§13) is a starter, not a PC card: one PCIe lane,
   ~500–900 MB/s. It proves the architecture and the driver; it
   does not prove a PCIe 4.0 x16 board.
@@ -823,6 +963,25 @@ legal advice — when in doubt, ask a real lawyer or do not do it.
 ---
 
 ## Changelog
+
+### v0.3.2 — 2026-11-24
+
+- **Driver section (§9 rewritten):** the driver ladder
+  (enumeration -> custom Linux PCIe driver -> dumb framebuffer ->
+  Mesa Gallium3D), what "reworking" a driver really means
+  (AMDGPU / i915 / nouveau cannot be pointed at an FPGA; only
+  the Linux / DRM framework is reusable), and why a card
+  without a rung-4 driver gives zero fps in games (§9.3) —
+  plus the PCIe x16 slot requirement (a mini PC has none).
+- **MCU-cluster GPU (§12.5, bitluni Supercluster 2 style):**
+  one chip per pixel, controller tree (1 per 32 workers), SPI,
+  resolution math (320x200 = 64,000 chips), power math
+  (~10 mA per chip, 8,192 chips ~2.2 kW), flashing rig,
+  raymarching workload, no PCIe / no games. The repo has no
+  visible LICENSE — reference only, do not copy its files.
+  Plus hardware lessons from the build video: own crystal per
+  chip (no shared clock), crosstalk rules, blade splitting,
+  respin budget, power as its own project.
 
 ### v0.3.1 — 2026-11-24
 
