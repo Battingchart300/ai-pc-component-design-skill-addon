@@ -1,0 +1,1 @@
+{"pcie":{"bar0_mb_max":16,"bar0_mb_min":1,"bar2_mb_min":256,"class_code":"0x030000","impedance_ohm":85,"max_enumeration_ms":100,"refclk_mhz":100,"slot_power_w":75},"required_base_skill":"ai-pcb-design-skill","required_base_version":"1.2.1","vram":{"min_bandwidth_gbs_1080p":20.0,"min_capacity_gb":1,"voltages":{"DDR3":1.5,"DDR4":1.2,"DDR5":1.1,"LPDDR4X":1.1}}}
