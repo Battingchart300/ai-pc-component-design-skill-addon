@@ -2,10 +2,12 @@
 """run_all.py — run every addon check, base skill first.
 
 Order: require_base.py -> pcie_check.py -> vram_check.py ->
-base rules_check.py on the base spec (if --spec is given and the
-base kit is found). Any failure stops with that script's exit code.
+storage_check.py -> lan_check.py -> base rules_check.py on the
+base spec (if --spec is given and the base kit is found).
+A missing kit script is a setup failure (exit 2), never a silent
+PASS — every step is verified to exist before it runs.
 Exit codes: 0 = all pass, 1 = a check failed, 2 = setup missing
-(including: base skill missing).
+(including: base skill missing, kit script missing, spec unreadable).
 Standard library only.
 """
 import argparse
@@ -15,6 +17,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 EXAMPLE = HERE / "examples" / "spec.json"
+# Every script run_all depends on. Checked up front (fix v0.3.0):
+# a missing check must FAIL, never silently pass.
+CHECKS = ["require_base.py", "pcie_check.py", "vram_check.py",
+          "storage_check.py", "lan_check.py"]
 
 
 def run(cmd, label):
@@ -31,42 +37,31 @@ def main():
     ap.add_argument("--base-skill", default=None, help="Path to ai-pcb-design-skill repo")
     args = ap.parse_args()
 
+    missing = [name for name in CHECKS if not (HERE / name).is_file()]
+    if missing:
+        for name in missing:
+            print(f"ERROR: missing kit script: kit/{name} — cannot run checks.")
+        print("Audit log: run_all=FAIL (missing kit script), exit=2")
+        return 2
+
     py = sys.executable
     base_args = ["--base-skill", args.base_skill] if args.base_skill else []
 
     code = run([py, str(HERE / "require_base.py")] + base_args, "require_base")
     if code != 0:
         print("run_all: STOP — base skill missing. No addon check ran.")
-        print("Audit log: run_all=FAIL (require_base), exit=2")
-        return 2
+        print(f"Audit log: run_all=FAIL (require_base), exit={code}")
+        return code
 
-    code = run([py, str(HERE / "pcie_check.py"), args.addon_spec] + base_args, "pcie_check")
-    if code != 0:
-        print("Audit log: run_all=FAIL (pcie_check), exit=1")
-        return 1
-
-    code = run([py, str(HERE / "vram_check.py"), args.addon_spec] + base_args, "vram_check")
-    if code != 0:
-        print("Audit log: run_all=FAIL (vram_check), exit=1")
-        return 1
-
-    code = run([py, str(HERE / "storage_check.py"), args.addon_spec] + base_args, "storage_check")
-    if code != 0:
-        print("Audit log: run_all=FAIL (storage_check), exit=1")
-        return 1
-
-    code = run([py, str(HERE / "lan_check.py"), args.addon_spec] + base_args, "lan_check")
-    if code != 0:
-        print("Audit log: run_all=FAIL (lan_check), exit=1")
-        return 1
+    for script in ["pcie_check.py", "vram_check.py", "storage_check.py", "lan_check.py"]:
+        label = script[:-3]
+        code = run([py, str(HERE / script), args.addon_spec] + base_args, label)
+        if code != 0:
+            print(f"Audit log: run_all=FAIL ({label}), exit={code}")
+            return code
 
     if args.spec:
         # Find the base kit to run its rules_check on the base spec.
-        r = subprocess.run(
-            [py, str(HERE / "require_base.py")] + base_args,
-            capture_output=True, text=True,
-        )
-        # require_base prints the path; re-locate it the same way.
         sys.path.insert(0, str(HERE))
         from require_base import find_base_skill
 
@@ -75,13 +70,14 @@ def main():
             print("run_all: base skill vanished between checks — abort.")
             return 2
         base_rules = Path(base_path) / "kit" / "rules_check.py"
-        if base_rules.is_file():
-            code = run([py, str(base_rules), args.spec], "base rules_check")
-            if code != 0:
-                print("Audit log: run_all=FAIL (base rules_check), exit=1")
-                return 1
-        else:
-            print(f"WARNING: base rules_check.py not found at {base_rules} — skipped, listed as a gap.")
+        if not base_rules.is_file():
+            print(f"ERROR: missing base check script: {base_rules} — cannot run base rules_check, not a pass.")
+            print("Audit log: run_all=FAIL (base rules_check missing), exit=2")
+            return 2
+        code = run([py, str(base_rules), args.spec], "base rules_check")
+        if code != 0:
+            print(f"Audit log: run_all=FAIL (base rules_check), exit={code}")
+            return code
     print("Audit log: run_all=PASS (require_base, pcie_check, vram_check, storage_check, lan_check), exit=0")
     return 0
 
