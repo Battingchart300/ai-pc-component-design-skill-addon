@@ -47,11 +47,24 @@ def is_pow2_mb(x):
 
 
 def load_config():
+    """Load kit/config.json. A missing or unreadable config is a
+    setup failure (exit 2) — the kit never silently falls back to
+    built-in defaults, so a deleted config cannot pass checks."""
     try:
         cfg = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
-        return cfg if isinstance(cfg, dict) else {}
-    except Exception:
-        return {}
+    except FileNotFoundError:
+        print("ERROR: kit/config.json is missing — the kit is incomplete, no check ran.")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"ERROR: kit/config.json is not valid JSON: {e}")
+        return None
+    except OSError as e:
+        print(f"ERROR: cannot read kit/config.json: {e}")
+        return None
+    if not isinstance(cfg, dict):
+        print("ERROR: kit/config.json must be a JSON object")
+        return None
+    return cfg
 
 
 def require_base_or_exit(base_skill):
@@ -106,6 +119,9 @@ def main():
         return err
 
     cfg = load_config()
+    if cfg is None:
+        print("Audit log: pcie_check=FAIL (setup missing), exit=2")
+        return 2
     pcie_cfg = cfg.get("pcie", {}) if isinstance(cfg.get("pcie"), dict) else {}
     slot_max = pcie_cfg.get("slot_power_w", SLOT_MAX_W)
     aux_max = {
