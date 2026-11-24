@@ -21,14 +21,14 @@ and runs **no** addon check.
 
 | Script | What it checks |
 |---|---|
-| `require_base.py` | Base skill present, `SKILL.md` exists, version >= 1.2.1. Exit 2 if missing/old. |
-| `pcie_check.py <addon-spec.json>` | PCIe generation/lanes, class code 0x030000, Vendor/Device ID, BAR0/BAR2, 85 Ω, 100 MHz, Tandem on PCIe 4.0, slot+aux power budget, 8+ layers on PCIe 4.0. Gen 2/3 x1 accepted for a Pi 5 HAT. |
-| `vram_check.py <addon-spec.json>` | VRAM type/voltage match (DDR4 1.2 V, DDR5 1.1 V), capacity, bus width, data rate, bandwidth in GB/s, BAR2 vs VRAM with ReBAR. |
-| `storage_check.py <addon-spec.json>` (v0.2) | Optional `storage`: NVMe M.2 M-key / lanes / form factor / 3.3 V / boot flag, SATA III / ports / power. Skips with a note if no storage section. |
-| `lan_check.py <addon-spec.json>` (v0.2) | Optional `lan`: RJ45, 1/2.5 GbE, PHY, magnetics, ESD. Skips with a note if no LAN section. |
-| `run_all.py` | Runs require_base, pcie_check, vram_check, storage_check, lan_check, then the base `rules_check.py` if `--spec` (base spec) is given. |
+| `require_base.py` | Base skill present, frontmatter `name:` exactly `ai-pcb-design-skill`, version >= 1.2.1. Exit 2 if missing, misnamed or old. |
+| `pcie_check.py <addon-spec.json>` | PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem on PCIe 4.0, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W), rails finite and non-negative, board layers required. Gen 2/3 x1 accepted for a Pi 5 HAT. Missing file / invalid JSON exits 2. |
+| `vram_check.py <addon-spec.json>` | VRAM type/voltage match (`vram.voltage_v` checked when present, else the rail), capacity, bus width, data rate with type limits (DDR4 max 3200, DDR5 max 6400 MT/s) + FPGA cap (`fpga.max_ddr_mt_s`, XCKU5P max 2666 MT/s per AMD), bandwidth in GB/s, BAR2 vs VRAM with ReBAR. Missing file / invalid JSON exits 2. |
+| `storage_check.py <addon-spec.json>` (v0.2) | Optional `storage`: NVMe M.2 M-key / lanes / form factor / 3.3 V / boot flag, SATA III / ports / power. Skips with a note if no storage section. Missing file / invalid JSON exits 2. |
+| `lan_check.py <addon-spec.json>` (v0.2) | Optional `lan`: RJ45, 1/2.5 GbE, PHY, magnetics, ESD. Skips with a note if no LAN section. Missing file / invalid JSON exits 2. |
+| `run_all.py` | Runs require_base, pcie_check, vram_check, storage_check, lan_check, then the base `rules_check.py` if `--spec` (base spec) is given. A missing kit script exits 2 with the file named — never a silent PASS. |
 
-Exit codes: `0` = pass, `1` = fail, `2` = setup missing.
+Exit codes: `0` = pass, `1` = fail (bad spec values), `2` = setup missing (base missing, kit script missing, spec file missing, spec not valid JSON).
 
 ## Examples
 
@@ -43,9 +43,11 @@ python kit/run_all.py --base-skill ../ai-pcb-design-skill
 ```
 
 `kit/examples/spec.json` is a sample FPGA GPU addon spec that
-**passes** all addon checks (8 GB DDR4-3200, 64-bit, 25.6 GB/s,
-PCIe 4.0 x8, Class 0x030000, BAR0 16 MB, BAR2 8192 MB, Tandem on,
+**passes** all addon checks (8 GB DDR4-2666, 64-bit, 21.3 GB/s —
+2666 is the XCKU5P FPGA cap per AMD, not DDR4-3200; PCIe 4.0 x8,
+Class 0x030000, BAR0 16 MB, BAR2 8192 MB, Tandem on,
 NVMe M.2 2280 x4 + SATA x2, RJ45 1GbE).
 `kit/examples/spec_pi5_hat.json` is a sample Pi 5 HAT addon spec
 that **passes** (PCIe 2.0 x1, 4 layers, CrossLink-NX bridge +
-32× CH32V003, 1 GB DDR4, NVMe 2230 x1, RJ45 1GbE).
+32× CH32V003, 1 GB DDR4, RJ45 1GbE — no NVMe: the single PCIe
+lane belongs to the FPGA bridge, see SKILL.md §13).
