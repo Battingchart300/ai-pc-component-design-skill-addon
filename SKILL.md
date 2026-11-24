@@ -1,11 +1,11 @@
 ---
 name: ai-pc-component-design-skill-addon
-description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM. Does NOT work without the base skill. Use when designing a GPU, VRAM, motherboard or high-speed PC component with an AI.
+description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM, Pi 5 HAT, NVMe/SATA storage and RJ45 LAN. Does NOT work without the base skill. Use when designing a GPU, VRAM, motherboard, Pi 5 HAT, storage or LAN with an AI.
 ---
 
 # ai-pc-component-design-skill-addon
 
-**Version:** 0.1.0 — 2026-11-24
+**Version:** 0.2.0 — 2026-11-24
 **What it is:** an addon skill for designing PC components — a custom
 FPGA GPU, its VRAM, and a custom motherboard / RAM — on top of
 `ai-pcb-design-skill`. It adds only the high-speed, FPGA and
@@ -88,7 +88,7 @@ a stage passed re-opens the dependent stages.
 | Stage | Do | Gate |
 |---|---|---|
 | A0. Prerequisite | Load base skill, confirm version >= 1.2.1. | `kit/require_base.py` passes. Human confirms base is loaded. |
-| A1. Requirements | Write the addon spec (§2): PCIe, FPGA, VRAM, power, display. | `kit/pcie_check.py` + `kit/vram_check.py`: 0 errors. Human approves the spec. |
+| A1. Requirements | Write the addon spec (§2): PCIe, FPGA, VRAM, power, display + path (§12), Pi 5 HAT (§13), storage (§14), LAN (§15) if used. | `kit/pcie_check.py` + `kit/vram_check.py` + `kit/storage_check.py` + `kit/lan_check.py`: 0 errors. Human approves the spec. |
 | A2. Architecture | Block diagram: FPGA + VRAM + PDN + clocks + display. Pick the FPGA and memory chips from datasheets. | Every active part has MPN + datasheet + footprint. No part without a datasheet. |
 | A3. Simulation first | C++/Python reference model, then RTL, then Verilator (§10). | Reference model renders a test triangle. Verilator renders the same frame. |
 | A4. Schematic + stackup | Base schematic + 8–14 layer stackup, 85 Ω pairs, sequencing. | Base ERC 0 errors; stackup matches the fab (§3). |
@@ -451,15 +451,20 @@ no installation needed. Exit codes: `0` = pass, `1` = fail,
 | Script | What it checks |
 |---|---|
 | `require_base.py` | Finds `ai-pcb-design-skill` (sibling folder, `AI_PCB_SKILL_PATH`, or `--base-skill`), checks `SKILL.md` exists and version >= 1.2.1. Exit 2 if missing. |
-| `pcie_check.py` | Addon spec: PCIe generation/lanes, class code, Vendor/Device ID, BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot+aux power budget. Calls `require_base.py` first. |
+| `pcie_check.py` | Addon spec: PCIe generation/lanes, class code, Vendor/Device ID, BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot+aux power budget. Accepts gen 2/3 x1 for a Pi 5 HAT (§13) and gen 3/4 for a PC card. Calls `require_base.py` first. |
 | `vram_check.py` | Addon spec: VRAM type/voltage match, capacity, bus width, data rate, bandwidth calculation, framebuffer demand. Calls `require_base.py` first. |
-| `run_all.py` | Runs `require_base.py`, `pcie_check.py`, `vram_check.py`, then the base `rules_check.py` on the base spec if `--spec` is given. Prints an audit log. |
+| `storage_check.py` (v0.2) | Addon spec, optional `storage` section: NVMe (M.2 M-key, PCIe lanes, 3.3 V, boot flag) and SATA (SATA III, 100 Ω pairs, power). Skips with a note if no storage section. Calls `require_base.py` first. |
+| `lan_check.py` (v0.2) | Addon spec, optional `lan` section: speed 1/2.5 GbE, PHY present, magnetics present, ESD present. Skips with a note if no LAN section. Calls `require_base.py` first. |
+| `run_all.py` | Runs `require_base.py`, `pcie_check.py`, `vram_check.py`, `storage_check.py`, `lan_check.py`, then the base `rules_check.py` on the base spec if `--spec` is given. Prints an audit log. |
 
 ```bash
 # from this repo root
 python kit/run_all.py
 python kit/pcie_check.py kit/examples/spec.json
 python kit/vram_check.py kit/examples/spec.json
+python kit/storage_check.py kit/examples/spec.json
+python kit/lan_check.py kit/examples/spec.json
+python kit/pcie_check.py kit/examples/spec_pi5_hat.json
 
 # point at a base skill in another place
 python kit/run_all.py --base-skill ../ai-pcb-design-skill
@@ -471,7 +476,274 @@ the scripts do, and a human reviews the result.
 
 ---
 
-## 12. Honest limits
+## 12. Three GPU paths — pick one first (v0.2)
+
+Do not mix the paths in one board. Pick one, write it in the spec,
+and design only that path. A board that tries to be all three is a
+respin.
+
+### 12.1 Path A — 100% own system: FPGA / mini-chip farm
+
+- **What:** everything is yours — FPGA GPU (§6) and/or a field of
+  small chips, own firmware, own driver, from scratch.
+- **PCIe:** yes, via the FPGA (§3, §7). **Performance:** retro /
+  simple 3D / own compute. **PCB:** high (8–10 layers, DDR4).
+- **Use when:** you want to learn and own the whole stack, and
+  retro-level 3D is enough.
+
+### 12.2 Path B — modern GPU chip on your own PCB (clone a card)
+
+- **What:** desolder a modern GPU die (AMD RDNA 2/3, NVIDIA RTX
+  30/40, Intel Arc) + its GDDR6 from a donor card and put them on
+  your own PCB (smaller, better power, water block, extra chips).
+- **Firmware lock — hard stop:** modern chips have a hardware root
+  of trust. At power-on an internal security processor (AMD PSP,
+  NVIDIA Falcon/GSP) verifies the cryptographic signature of the
+  firmware (VBIOS). **You cannot write your own firmware for the
+  chip, or edit its base code — the chip refuses it and stays
+  dead.** Use the original VBIOS exactly from the donor card.
+  Use official drivers (or open Linux drivers: `amdgpu` / `xe` /
+  `nouveau`). The internal registers are secret and the driver is
+  millions of lines — do not try to rewrite it.
+- **What you need:** the donor card + its complete schematic /
+  boardview (`.pdf` + `.brd`). AMD RX 6600 / 6700 XT / 7600 and
+  older NVIDIA RTX 20/30 are the most practical — leaked
+  schematics exist in repair forums. **Without the schematic you
+  have no chance:** a modern GPU has 1,500–2,500 balls under it
+  and the pinout is never published.
+- **PCB difficulty — extreme:** 10–14 layers, GDDR6 at 14–20 Gbps,
+  PCIe 4.0 at 16 GT/s, trace lengths matched to tenths of a
+  millimetre, VRM delivering **100–300 A at under 1 V**.
+- **Combination:** add a PCIe 4.0 switch (ASMedia / Microchip) on
+  the same board: PCIe 4.0 x8 to the modern GPU, PCIe 4.0 x4 to
+  your own mini-chip field, for which you *do* write your own
+  firmware and driver. That is the highest difficulty in this
+  skill.
+
+| Path | Own firmware + driver | PCIe 4.0 | Graphics | PCB difficulty |
+|---|---|---|---|---|
+| Modern GPU chip | No (original VBIOS + drivers) | Yes (native) | Modern AAA games | Extreme (12+ layers, GDDR6, 200 A VRM) |
+| Own FPGA + mini chips | Yes, 100% | Yes (via FPGA) | Retro / simple 3D | High (8–10 layers, DDR4) |
+| Combination (modern GPU + mini chips via switch) | Yes (for your part) | Yes (via switch) | Modern games + own coprocessor | Highest (needs donor schematic) |
+
+### 12.3 Path C — recycled old GPU chip
+
+- **What:** desolder an old GPU die and put it on your own board
+  with your mini-chip field, on PCIe 4.0 via a switch/bridge.
+- **Hard problems:** (1) **Secret pinouts** — NVIDIA/AMD/Intel
+  never publish which of the 1,500+ balls is power, VRAM data or
+  PCIe. Without a leaked schematic/boardview for that exact card,
+  the chip cannot be wired. (2) **Old PCIe generations** — old
+  chips are PCIe 1.0/2.0/3.0 only. For PCIe 4.0 you need an
+  expensive PCIe switch/bridge (Broadcom/PLX, ASMedia) that
+  translates PCIe 4.0 to the older standard. (3) **Closed
+  firmware** — chips from ~2014 on have a security coprocessor
+  (PSP/SMU) that verifies the VBIOS signature. Change the board
+  or load a modified firmware and the chip blocks and never
+  starts.
+- **Two workable routes:**
+  - **Route A — PCIe switch + two branches:** one PCIe 4.0
+    switch (Microchip / ASMedia, buyable with documentation
+    after NDA or via distributors) splits the link: one branch
+    to an older but documented graphics chip (e.g. Radeon HD
+    6000/7000, pre-2013 — lots of open documentation from Linux
+    drivers and leaked laptop schematics) for classic 3D +
+    monitor output; the other branch to your mini-chip field
+    (e.g. dozens of CH32V / RP2350) as your own parallel
+    compute coprocessor (physics / AI card on the same PCB).
+  - **Route B — old chip with public documentation (easiest to
+    bring up):** 3dfx Voodoo 3 / Voodoo 4 (VSA-100) — the
+    community has fully mapped the wiring and people build
+    modern PCBs with these chips today; or industrial chips
+    Silicon Motion SM750 / SM768, Matrox G200 — full register
+    and pin documentation is available.
+- **Recycling steps:** (1) get the exact chip + schematic /
+  boardview; desolder with hot air / BGA rework station, clean,
+  reball; (2) copy the power (VRM) and VRAM wiring from the donor
+  exactly; (3) add the PCIe 4.0 switch so the board talks PCIe
+  4.0 and serves both the old GPU and your mini-chip field.
+
+### 12.4 Mini-chip farm — the worker array (v0.2)
+
+Two different worlds, do not confuse them:
+
+- **74-series TTL logic (e.g. Michael Kamprath):** classic logic
+  gates 74HC / 74ACT (74HC00 NAND, 74HC283 adder, 74HC574
+  register). Each tiny chip does one elementary thing. Beautiful
+  retro card for slow 8-bit computers (a few MHz). **Physically
+  incompatible with PCIe 4.0 (16 GHz)** — such a board would be
+  room-sized and the signal would fall apart.
+- **Field of small MCUs (e.g. Bitluni):** dozens of tiny 32-bit
+  RISC-V chips on small boards. Each chip is one "shader core"
+  (computes one pixel / one row in parallel with the others).
+
+**Hybrid (two-level) architecture — the only way to PCIe 4.0:**
+
+1. **Main bridge:** one chip at the PCIe edge with PCIe 4.0
+   (small FPGA: Artix UltraScale+ or Lattice Avant-E, or a
+   PCIe-to-parallel/SPI bridge). It talks to the motherboard
+   over PCIe 4.0, presents as a graphics card (Class Code
+   0x030000), and holds the VRAM.
+2. **Worker field:** the rest of the board is covered with
+   dozens / hundreds of cheap legged chips. The bridge sends
+   them data (triangles / textures) over fast parallel buses
+   or dozens of SPI lines; the small chips compute in parallel
+   and send finished pixels back; the bridge sends them to the
+   monitor.
+
+**Cheap worker chips (DIY community, v0.2):**
+
+| Chip | Price | Package | Notes |
+|---|---|---|---|
+| WCH CH32V003 / CH32V006 | ~0.10–0.15 € | SOIC-8 / SOP-16 / TSSOP-20 | 48 MHz RISC-V, 2–8 KB RAM, 16–64 KB Flash. Ideal as a mass field of simple pixel shaders. |
+| WCH CH570D / CH571 (the chip in the Bitluni photo) | ~0.25 € | — | 100 MHz RISC-V, more RAM (12 KB), faster I/O. |
+| Raspberry Pi RP2040 / RP2350 | ~0.70–1.00 € | QFN | 2 cores (133–150 MHz), PIO (Programmable I/O) — receives data from the bridge fast without loading the CPU, can even generate HDMI/DVI directly. |
+
+**PCB rule for the farm:** one bridge + a grid of 32 / 64 workers.
+Route data from the bridge as a bus / star, not as chaos: one
+shared parallel bus or grouped SPI lines, short traces, one
+power rail per group with decoupling per chip (base §4.6).
+The farm is a coprocessor, not a replacement for the bridge —
+without the bridge there is no PCIe.
+
+---
+
+## 13. Raspberry Pi 5 HAT — the starter path (v0.2)
+
+**Start here.** The Pi 5 HAT is the best and simplest place to
+begin a custom GPU / compute-field board.
+
+- **Link:** Raspberry Pi 5 exposes **PCIe 2.0 x1** on its side
+  (unofficially overclockable in the OS to **PCIe 3.0 x1**).
+  Not PCIe 4.0 — but for developing your own GPU card or
+  mini-chip field it is a huge advantage.
+- **Connection — cheap:** no expensive gold PCIe edge connector.
+  A plain **16-pin 0.5 mm FFC connector** (a few cents) on your
+  HAT + a short flat cable to the Pi 5 is enough.
+- **PCB — easy:** one lane (x1) at PCIe 2.0 (5 GT/s) or 3.0
+  (8 GT/s) needs **no 12 layers and no back-drilling**. A
+  **4-layer or 6-layer PCB in free KiCad** is enough. 5 boards
+  from JLCPCB cost ~15–30 €.
+- **OS + driver — open:** Raspberry Pi OS (Linux) gives direct
+  kernel access. Compile your own Linux PCIe / DRM driver in C
+  and test data transfer immediately, without risking an
+  expensive PC motherboard.
+- **Power:** power the HAT from the Pi 5 via the 40-pin GPIO
+  header + PCIe FFC, or add your own USB-C power input on the
+  HAT if you fit dozens of small chips.
+- **What fits on the HAT:** one small cheap PCIe-to-parallel /
+  SPI bridge (e.g. Lattice CrossLink-NX or Gowin GW2A with
+  PCIe 2.0) + a grid of 16 / 32 / 64 × CH32V003 / CH570 /
+  RP2350 as an external graphics or AI accelerator; or your own
+  2D/3D chip with HDMI output. People already run real AMD cards
+  on a Pi 5 (RX 460 / 580 / 6600, open `amdgpu` drivers) via an
+  FFC-to-PCIe-x16 adapter — the same path works for your own chip.
+- **Limit vs PC:** one lane only — ~500 MB/s (PCIe 2.0) to
+  ~900 MB/s (PCIe 3.0), vs PCIe 4.0 x16 at ~32,000 MB/s on a PC.
+  For prototyping your architecture, writing your own driver
+  and rendering 720p/1080p, that is plenty.
+- **Spec for a Pi 5 HAT:** see `kit/examples/spec_pi5_hat.json`
+  — PCIe generation 2 (or 3 if overclocked), lanes 1, FFC
+  connector, 4 layers, bridge FPGA + 32 workers. `pcie_check.py`
+  accepts generation 2/3 with lanes 1 for a Pi 5 HAT (see §11).
+
+---
+
+## 14. Storage — NVMe / SATA SSD (v0.2)
+
+Storage is a PC component on the same board, not an afterthought.
+The base skill already covers M.2 NVMe via PCIe on a CM5 carrier
+(base §4.7); this addon adds it as a first-class PC-component
+option.
+
+| Option | Interface | Speed | Connector |
+|---|---|---|---|
+| NVMe SSD | PCIe (M.2 M-key, x1 / x2 / x4) | PCIe 3.0 x4 ~3.5 GB/s, PCIe 4.0 x4 ~7 GB/s | M.2 2230 / 2242 / 2280, M-key |
+| SATA SSD / HDD | SATA III (AHCI) | 6 Gb/s (~550 MB/s) | SATA data (7-pin) + SATA power (15-pin) |
+
+**Rules:**
+- **NVMe:** differential pairs 85 Ω (§3), short traces, 3.3 V
+  power (check the SSD's power draw — some need 5–8 W), M.2
+  screw / standoff at the right length (2280 = 80 mm). Boot
+  from NVMe must be supported by the host BIOS / firmware —
+  verify before ordering, do not assume it.
+- **SATA:** SATA data pairs are 100 Ω differential, length
+  matched, ESD on the connector. SATA power needs 5 V + 12 V
+  (HDD) or 5 V only (most SATA SSDs) — check the drive's label.
+  AHCI controller in the host / FPGA, or a SATA controller chip
+  with a datasheet.
+- **Do not share lanes silently:** an M.2 slot that takes PCIe
+  lanes takes them from the GPU / switch budget (§3, §12.2).
+  Write the lane budget in the spec: total lanes in = GPU lanes
+  + NVMe lanes + other lanes. A lane used twice is a short in
+  the plan, not a saving.
+- **Check:** `kit/storage_check.py` validates the storage
+  section (type, lanes, connector, power, boot flag).
+
+---
+
+## 15. LAN — RJ45 Ethernet (v0.2)
+
+An RJ45 connector alone is not a network port. A working LAN
+port needs a PHY + magnetics + protection.
+
+| Speed | PHY / controller | Notes |
+|---|---|---|
+| 1 GbE | 1 GbE PHY (e.g. Realtek / Microchip, per datasheet) | Most common, easiest. |
+| 2.5 GbE | 2.5 GbE PHY | Needs a 2.5 GbE-capable PHY + magnetics rated for it. |
+| 10 GbE | 10 GbE PHY / SFP+ | Advanced — not a first build. |
+
+**Rules:**
+- **Chain:** MAC (in host / FPGA / SoC) → PHY chip → magnetics
+  (transformer, usually inside the RJ45 jack or as a separate
+  part) → RJ45 jack → cable. Never connect a MAC directly to
+  an RJ45 jack without magnetics + PHY.
+- **Magnetics:** use a jack with integrated magnetics, or a
+  discrete magnetics part matched to the PHY datasheet. The
+  PHY datasheet names the exact magnetics — follow it.
+- **Pairs:** TX/RX differential pairs 100 Ω, length matched,
+  short, over a solid GND plane, away from switching regulators
+  and PCIe pairs.
+- **Protection:** ESD diodes on the jack side, close to the
+  connector. LEDs (link / activity) per the PHY datasheet.
+- **PoE (optional):** Power over Ethernet needs a PoE PD
+  controller + isolation — do not add it by wiring 48 V to the
+  jack. If PoE is wanted, it is its own spec item with its own
+  datasheet.
+- **Check:** `kit/lan_check.py` validates the LAN section
+  (speed, PHY present, magnetics present, ESD present).
+
+---
+
+## 16. Extra PC I/O — USB-C, WiFi, RTC/TPM, cooling (v0.2)
+
+Small items that make a PC component usable, each with its own
+datasheet — never a guessed part.
+
+- **USB-C 3.x + USB hub:** USB-C connector with CC resistors
+  (5.1 kΩ pull-downs for a sink, base §4.2), ESD on D+/D−,
+  90 Ω pairs for USB 2.0 / 3.x. A hub chip needs its datasheet
+  + crystal + power. USB-C power delivery (PD) is its own
+  controller — do not improvise it.
+- **WiFi / Bluetooth — M.2 E-key:** an M.2 E-key slot (PCIe x1
+  + USB 2.0) for a WiFi/BT module, with antenna connectors
+  (I-PEX / u.FL) + keep-out under the antenna. The module's
+  datasheet + the host driver must agree; a module without a
+  Linux driver is a dead slot.
+- **RTC + TPM:** RTC battery (CR2032 holder, correct polarity,
+  no charging a non-rechargeable cell) + crystal per the RTC
+  datasheet; TPM header (or onboard TPM chip) per the host
+  datasheet — a TPM footprint without a matching header pinout
+  is useless.
+- **Cooling — PWM fan + temperature sensor:** 4-pin PWM fan
+  header (PWM + tach), temperature sensor (I²C) near the FPGA /
+  GPU / VRM, fan curve in firmware. A fan without a tach wire
+  cannot report a stall; a sensor far from the hot part measures
+  the wrong temperature.
+
+---
+
+## 17. Honest limits
 
 - A skill is a workflow + checklists + review. It does not make
   an FPGA GPU cheap, fast or easy. The FPGA alone, the 8–14 layer
@@ -489,6 +761,15 @@ the scripts do, and a human reviews the result.
 - This addon does not design custom silicon / ASICs. It designs
   a board around an existing FPGA, it does not design the chip
   itself.
+- A modern GPU chip (Path B, §12.2) cannot run your own firmware.
+  The VBIOS signature lock is hardware, not a setting to turn off.
+  Without the donor schematic the chip cannot be wired at all.
+- A Pi 5 HAT (§13) is a starter, not a PC card: one PCIe lane,
+  ~500–900 MB/s. It proves the architecture and the driver; it
+  does not prove a PCIe 4.0 x16 board.
+- NVMe / SATA / LAN (§14–§15) need their own controller, PHY
+  and driver. A connector without the chip behind it is an
+  empty slot.
 
 ---
 

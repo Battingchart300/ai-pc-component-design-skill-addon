@@ -2,7 +2,18 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.1.0 — 2026-11-24
+**Version:** 0.2.0 — 2026-11-24
+
+## Changelog
+
+### v0.2.0 — 2026-11-24
+
+- **Three GPU paths (§12)** — 100% own FPGA/mini-chip system, modern GPU chip on your own PCB (VBIOS lock, donor schematic required), recycled old GPU chip (Voodoo 3 / SM750 / Matrox G200 documented) + mini-chip farm (74HC TTL vs CH32V003 / CH570 / RP2040, bridge + worker array).
+- **Raspberry Pi 5 HAT (§13)** — the starter path: PCIe 2.0 x1 (3.0 overclock), FFC, 4–6 layers, ~15–30 € for 5 boards.
+- **Storage (§14)** — NVMe M.2 M-key + SATA III, with `kit/storage_check.py` and a Pi 5 HAT example.
+- **LAN (§15)** — RJ45 1/2.5 GbE (PHY + magnetics + ESD), with `kit/lan_check.py`.
+- **Extra PC I/O (§16)** — USB-C 3.x + hub, M.2 E-key WiFi/BT, RTC + TPM, PWM fan + temperature sensor.
+- `pcie_check.py` now accepts gen 2/3 x1 for a Pi 5 HAT.
 
 > **REQUIRED: this addon does NOT work without the base skill.**
 > It requires `ai-pcb-design-skill` **v1.2.1 or newer**. Load the base
@@ -23,6 +34,9 @@ parts:
 - **Motherboard + RAM** — DIMM/SO-DIMM DDR4/DDR5, bus definition, power per slot, DisplayPort/HDMI output
 - **Driver** — Linux DRM/KMS, Mesa/Vulkan backend
 - **Simulation first** — C++/Python reference model, SystemVerilog, Verilator + GTKWave, before any hardware
+- **v0.2: three GPU paths** — own FPGA/mini-chip system, modern GPU chip (VBIOS lock), recycled old GPU chip + mini-chip farm
+- **v0.2: Pi 5 HAT** — PCIe 2.0 x1 (3.0 overclock), FFC, 4–6 layers, the starter path
+- **v0.2: storage + LAN + extra I/O** — NVMe / SATA SSD, RJ45 1/2.5 GbE (PHY + magnetics + ESD), USB-C, M.2 E-key WiFi/BT, RTC + TPM, PWM fan
 
 ## What it does NOT do
 
@@ -43,9 +57,12 @@ ai-pc-component-design-skill-addon/
     ├── require_base.py # finds + verifies the base skill, exit 2 if missing
     ├── pcie_check.py   # PCIe / enumeration checks on an addon spec
     ├── vram_check.py   # VRAM type / bandwidth checks on an addon spec
-    ├── run_all.py      # runs require_base + pcie + vram (+ base rules_check)
+    ├── storage_check.py # NVMe / SATA checks (v0.2, optional section)
+    ├── lan_check.py    # RJ45 LAN checks (v0.2, optional section)
+    ├── run_all.py      # runs require_base + pcie + vram + storage + lan (+ base rules_check)
     └── examples/
-        └── spec.json   # sample FPGA GPU addon spec (passes)
+        ├── spec.json   # sample FPGA GPU addon spec (passes)
+        └── spec_pi5_hat.json # sample Pi 5 HAT addon spec (passes)
 ```
 
 ## Quick start
