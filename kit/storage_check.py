@@ -8,7 +8,9 @@ If it is present, it is validated.
 Calls require_base.py FIRST. If the base skill is missing, exits 2
 and runs no addon check — this addon does not work without it.
 
-Exit codes: 0 = pass / skipped, 1 = fail, 2 = setup missing.
+Exit codes: 0 = pass / skipped, 1 = fail (bad spec values),
+2 = setup missing (base missing, spec file missing, spec not
+valid JSON).
 Standard library only.
 """
 import argparse
@@ -42,10 +44,21 @@ def main():
         return 2
 
     try:
-        spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"ERROR: cannot read spec: {e}")
-        return 1
+        text = Path(args.spec).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"ERROR: spec file not found: {args.spec}")
+        print("Audit log: storage_check=FAIL (setup missing), exit=2")
+        return 2
+    except OSError as e:
+        print(f"ERROR: cannot read spec {args.spec}: {e}")
+        print("Audit log: storage_check=FAIL (setup missing), exit=2")
+        return 2
+    try:
+        spec = json.loads(text)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: spec is not valid JSON: {e}")
+        print("Audit log: storage_check=FAIL (setup missing), exit=2")
+        return 2
 
     storage = spec.get("storage")
     if storage is None:
