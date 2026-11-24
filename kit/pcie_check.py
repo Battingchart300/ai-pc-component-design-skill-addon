@@ -32,6 +32,20 @@ def is_num(x):
     return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
+def is_pow2_mb(x):
+    """A BAR size in MB must be a power of two (PCIe spec):
+    1, 2, 4, 8, 16, 256, 512, 1024, ... A size like 300 MB is not
+    a valid BAR size, even when it is inside the range."""
+    if not is_num(x):
+        return False
+    n = x
+    if isinstance(n, float):
+        if not n.is_integer():
+            return False
+        n = int(n)
+    return isinstance(n, int) and n > 0 and (n & (n - 1)) == 0
+
+
 def load_config():
     try:
         cfg = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
@@ -66,10 +80,15 @@ def load_spec(path):
         print(f"ERROR: cannot read spec {path}: {e}")
         return None, 2
     try:
-        return json.loads(text), None
+        spec = json.loads(text)
     except json.JSONDecodeError as e:
         print(f"ERROR: spec is not valid JSON: {e}")
         return None, 2
+    if not isinstance(spec, dict):
+        print(f"ERROR: spec must be a JSON object, got {type(spec).__name__} "
+              "(e.g. a list) — check the file's root type")
+        return None, 2
+    return spec, None
 
 
 def main():
@@ -121,9 +140,13 @@ def main():
     bar0 = pcie.get("bar0_mb")
     if not is_num(bar0) or not (1 <= bar0 <= 16):
         errors.append(f"pcie.bar0_mb must be 1-16 MB (control registers), got {bar0!r}")
+    elif not is_pow2_mb(bar0):
+        errors.append(f"pcie.bar0_mb must be a power of two (1/2/4/8/16 MB, PCIe BAR sizes), got {bar0!r}")
     bar2 = pcie.get("bar2_mb")
     if not is_num(bar2) or bar2 < 256:
         errors.append(f"pcie.bar2_mb must be >= 256 MB (VRAM), got {bar2!r}")
+    elif not is_pow2_mb(bar2):
+        errors.append(f"pcie.bar2_mb must be a power of two (256/512/1024/2048/... MB, PCIe BAR sizes), got {bar2!r}")
     if pcie.get("impedance_ohm") != 85:
         errors.append(f"pcie.impedance_ohm must be 85, got {pcie.get('impedance_ohm')!r}")
     if pcie.get("refclk_mhz") != 100:
@@ -180,7 +203,7 @@ def main():
     if est_w > 75 and not aux_w:
         errors.append("power: over 75 W needs a 6-pin or 8-pin PCIe aux connector (slot alone is 75 W max)")
     if not power.get("rails"):
-        warnings.append("power.rails is empty — write the power tree (rails + currents) before routing.")
+        errors.append("power.rails is required — write the power tree (rails + currents) before routing; a missing power tree cannot be checked")
 
     board = spec.get("board", {}) if isinstance(spec.get("board"), dict) else {}
     layers = board.get("layers")

@@ -59,6 +59,11 @@ def main():
         print(f"ERROR: spec is not valid JSON: {e}")
         print("Audit log: storage_check=FAIL (setup missing), exit=2")
         return 2
+    if not isinstance(spec, dict):
+        print(f"ERROR: spec must be a JSON object, got {type(spec).__name__} "
+              "(e.g. a list) — check the file's root type")
+        print("Audit log: storage_check=FAIL (setup missing), exit=2")
+        return 2
 
     storage = spec.get("storage")
     if storage is None:

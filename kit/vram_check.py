@@ -61,10 +61,15 @@ def load_spec(path):
         print(f"ERROR: cannot read spec {path}: {e}")
         return None, 2
     try:
-        return json.loads(text), None
+        spec = json.loads(text)
     except json.JSONDecodeError as e:
         print(f"ERROR: spec is not valid JSON: {e}")
         return None, 2
+    if not isinstance(spec, dict):
+        print(f"ERROR: spec must be a JSON object, got {type(spec).__name__} "
+              "(e.g. a list) — check the file's root type")
+        return None, 2
+    return spec, None
 
 
 def main():
@@ -118,6 +123,8 @@ def main():
                 found = [v for k, v in rails.items() if vtype in str(k).upper() or "DDR" in str(k).upper()]
                 if found and (not is_num(found[0]) or found[0] != expected):
                     errors.append(f"vram voltage mismatch: {vtype} needs {expected} V, rail is {found[0]} V")
+                elif not found:
+                    errors.append(f"vram voltage is unconfirmed: {vtype} needs {expected} V — declare vram.voltage_v={expected} or a power rail named {vtype} with {expected} V")
 
     cap = vram.get("capacity_gb")
     if not is_num(cap) or cap < 1:

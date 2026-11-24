@@ -51,3 +51,15 @@ NVMe M.2 2280 x4 + SATA x2, RJ45 1GbE).
 that **passes** (PCIe 2.0 x1, 4 layers, CrossLink-NX bridge +
 32× CH32V003, 1 GB DDR3-1066, RJ45 1GbE — no NVMe: the single PCIe
 lane belongs to the FPGA bridge, see SKILL.md §13).
+
+## Regression fixtures (audit 2026-11-24)
+
+- `examples/regression_bar2_300.json` — BAR2 300 MB (not a power of
+  two). Must FAIL in `pcie_check.py`.
+- `examples/regression_array_root.json` — the spec JSON root is a
+  list, not an object. Every check script must exit 2 with a clean
+  error, no traceback.
+- `examples/regression_no_rails.json` — `power` with no rails.
+  Must FAIL in `pcie_check.py` (power tree required).
+- `examples/regression_vram_no_voltage.json` — DDR4 with no voltage
+  declared anywhere. Must FAIL in `vram_check.py`.
