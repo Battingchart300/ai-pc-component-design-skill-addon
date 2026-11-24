@@ -2,9 +2,19 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.2.0 — 2026-11-24
+**Version:** 0.3.0 — 2026-11-24
 
 ## Changelog
+
+### v0.3.0 — 2026-11-24
+
+- **Validation hardened** (from Claude AI + ChatGPT reviews of v0.2.0): `require_base.py` now requires an exact frontmatter `name:` match — a misnamed skill no longer passes as the base. `run_all.py` fails (exit 2) if a kit script is missing. Missing spec file / invalid JSON exits 2 in every check.
+- **Power limits enforced** — slot max 75 W, 6-pin aux 75 W, 8-pin aux 150 W, USB-C 100 W, no connector = 0 W aux. Vendor/Device ID must be exactly 4 hex digits. Rails must be finite and non-negative; board layers are required. Bad values fail cleanly (exit 1), never with a traceback.
+- **VRAM limits enforced** — `vram.voltage_v` checked against the type; data-rate limits per type (DDR4 max 3200, DDR5 max 6400 MT/s) plus the FPGA cap (`fpga.max_ddr_mt_s`, XCKU5P max 2666 MT/s per AMD). Example spec fixed to DDR4-2666 (21.3 GB/s).
+- **Class code fixed** — 0x030000 VGA, 0x030200 3D controller, 0x038000 other display controller.
+- **Pi 5 HAT lane fix** — the single lane belongs to the FPGA bridge OR NVMe, not both; NVMe removed from the Pi 5 HAT example.
+- **Legal section (§18)** — donor schematics/boardview, VBIOS, Vendor ID, EU selling rules (CE/EMC, RoHS, WEEE, RED).
+- **CI** — `.github/workflows/ci.yml`: kit checks on both examples, Python 3.9–3.13, misnamed-base negative test.
 
 ### v0.2.0 — 2026-11-24
 
@@ -28,7 +38,7 @@ parts:
 
 - **PCIe 4.0** — 16 GT/s per lane, 85 Ω pairs, 100 MHz HCSL clock, AC coupling on TX, back-drilling, 8–14 layer stackup
 - **Power delivery** — 6–10 rails (0.72/0.85 V core at 20–50 A, 1.2 V DDR, 1.8 V I/O), power sequencing, 75 W slot limit + 6/8-pin aux power
-- **VRAM** — DDR4/DDR5 (GDDR6 noted as advanced), MIG controller, bandwidth calculation, Resizable BAR
+- **VRAM** — DDR4/DDR5 (GDDR6 noted as advanced), MIG controller, bandwidth calculation, Resizable BAR, data-rate limits incl. the FPGA cap (XCKU5P max 2666 MT/s)
 - **FPGA GPU core** — command processor, vertex shader, rasterizer, fragment shader, texture unit, ROP, display controller, own shader ISA (fixed-point first)
 - **BIOS / UEFI** — Class Code 0x030000, BAR0/BAR2, Tandem PCIe / CvP under 100 ms, QSPI flash, UEFI GOP in Expansion ROM
 - **Motherboard + RAM** — DIMM/SO-DIMM DDR4/DDR5, bus definition, power per slot, DisplayPort/HDMI output
@@ -51,6 +61,7 @@ ai-pc-component-design-skill-addon/
 ├── SKILL.md            # the addon skill (the whole workflow)
 ├── README.md           # this file
 ├── LICENSE             # MIT
+├── .github/workflows/ci.yml # CI: kit checks on both examples, Py 3.9-3.13
 └── kit/
     ├── README.md       # kit usage
     ├── config.json     # user-editable thresholds
@@ -83,7 +94,11 @@ python kit/vram_check.py my-gpu/spec.json
 All scripts are standard library only — no installation needed.
 Windows: use `python` (PowerShell). macOS/Linux: use `python3`.
 
-Exit codes: `0` = pass, `1` = fail, `2` = setup missing (including: base skill missing).
+Exit codes: `0` = pass, `1` = fail, `2` = setup missing (including: base skill missing, kit script missing, spec file missing, spec not valid JSON).
+
+## Legal
+
+Short version (SKILL.md §18 has the full text, and it is not legal advice): use only legally obtained donor material — leaked schematics/boardview may be copyrighted or trade secrets. VBIOS is copyrighted, do not distribute it. Vendor ID `0x10EE` is Xilinx's — fine for lab, selling needs your own PCI-SIG ID. Selling in the EU needs CE/EMC, RoHS, WEEE, and RED for WiFi/BT.
 
 ## Works with any AI
 
