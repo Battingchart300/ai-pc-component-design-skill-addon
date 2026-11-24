@@ -1,0 +1,71 @@
+{
+  "board": {
+    "fab": "jlcpcb",
+    "layers": 8,
+    "name": "Sample FPGA GPU"
+  },
+  "display": {
+    "connector": "DisplayPort",
+    "max_resolution": "1920x1080@60"
+  },
+  "fpga": {
+    "family": "Kintex UltraScale+",
+    "part": "XCKU5P"
+  },
+  "lan": {
+    "connector": "RJ45",
+    "esd": true,
+    "magnetics": true,
+    "phy": "RTL8211F",
+    "poe": false,
+    "speed": "1GbE"
+  },
+  "pcie": {
+    "bar0_mb": 16,
+    "bar2_mb": 8192,
+    "class_code": "0x030000",
+    "device_id": "0x1234",
+    "generation": 4,
+    "impedance_ohm": 85,
+    "lanes": 8,
+    "refclk_mhz": 100,
+    "resizable_bar": true,
+    "tandem": true,
+    "vendor_id": "0x10EE"
+  },
+  "power": {
+    "aux_connector": "8-pin PCIe",
+    "aux_w": 150,
+    "rails": [
+      {
+        "current_a": 20,
+        "rail": "VCCINT",
+        "voltage_v": 0.85
+      }
+    ],
+    "slot_w": 75
+  },
+  "storage": {
+    "nvme": {
+      "boot": true,
+      "connector": "M.2 M-key",
+      "form_factor": "2280",
+      "lanes": 4,
+      "power_v": 3.3
+    },
+    "sata": {
+      "ports": 2,
+      "power_v": [
+        5,
+        12
+      ],
+      "speed": "SATA III"
+    }
+  },
+  "vram": {
+    "bus_width_bits": 64,
+    "capacity_gb": 8,
+    "data_rate_mt_s": 2666,
+    "type": "DDR4"
+  }
+}
