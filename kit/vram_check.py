@@ -28,11 +28,24 @@ def is_num(x):
 
 
 def load_config():
+    """Load kit/config.json. A missing or unreadable config is a
+    setup failure (exit 2) — the kit never silently falls back to
+    built-in defaults, so a deleted config cannot pass checks."""
     try:
         cfg = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
-        return cfg if isinstance(cfg, dict) else {}
-    except Exception:
-        return {}
+    except FileNotFoundError:
+        print("ERROR: kit/config.json is missing — the kit is incomplete, no check ran.")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"ERROR: kit/config.json is not valid JSON: {e}")
+        return None
+    except OSError as e:
+        print(f"ERROR: cannot read kit/config.json: {e}")
+        return None
+    if not isinstance(cfg, dict):
+        print("ERROR: kit/config.json must be a JSON object")
+        return None
+    return cfg
 
 
 def require_base_or_exit(base_skill):
@@ -87,6 +100,9 @@ def main():
         return err
 
     cfg = load_config()
+    if cfg is None:
+        print("Audit log: vram_check=FAIL (setup missing), exit=2")
+        return 2
     vram_cfg = cfg.get("vram", {}) if isinstance(cfg.get("vram"), dict) else {}
     max_rate = dict(MAX_RATE)
     if isinstance(vram_cfg.get("max_data_rate_mt_s"), dict):
@@ -105,7 +121,12 @@ def main():
         return 1
 
     vtype = vram.get("type")
-    if vtype not in VOLTAGES:
+    if not isinstance(vtype, str):
+        # A list/dict type used to crash here: `vtype not in VOLTAGES`
+        # raises TypeError on an unhashable value. Report it instead.
+        errors.append(f"vram.type must be a string (e.g. 'DDR4'), got {vtype!r}")
+        vtype = None
+    elif vtype not in VOLTAGES:
         errors.append(f"vram.type must be one of {sorted(VOLTAGES)}, got {vtype!r}")
     else:
         expected = VOLTAGES[vtype]
@@ -116,15 +137,36 @@ def main():
                 vv = vram.get("voltage_v")
                 if not is_num(vv) or vv != expected:
                     errors.append(f"vram.voltage_v must be {expected} V for {vtype}, got {vv!r}")
-            else:
-                # 2) Fallback: a power rail named after the memory type.
-                power = spec.get("power", {}) if isinstance(spec.get("power"), dict) else {}
-                rails = {r.get("rail"): r.get("voltage_v") for r in power.get("rails", []) if isinstance(r, dict)}
-                found = [v for k, v in rails.items() if vtype in str(k).upper() or "DDR" in str(k).upper()]
-                if found and (not is_num(found[0]) or found[0] != expected):
-                    errors.append(f"vram voltage mismatch: {vtype} needs {expected} V, rail is {found[0]} V")
-                elif not found:
-                    errors.append(f"vram voltage is unconfirmed: {vtype} needs {expected} V — declare vram.voltage_v={expected} or a power rail named {vtype} with {expected} V")
+            # 2) A power rail named after the memory type must agree
+            #    too — ALWAYS, even when vram.voltage_v is present and
+            #    correct. A DDR4 rail at 5 V with voltage_v = 1.2 used
+            #    to pass because the rail was never looked at.
+            #    (Rail names must be strings: a list/dict name used to
+            #    crash the dict build below with a TypeError.)
+            power = spec.get("power", {}) if isinstance(spec.get("power"), dict) else {}
+            rails = {r.get("rail"): r.get("voltage_v") for r in power.get("rails", [])
+                     if isinstance(r, dict) and isinstance(r.get("rail"), str)}
+            found = [v for k, v in rails.items() if vtype in str(k).upper() or "DDR" in str(k).upper()]
+            if found and (not is_num(found[0]) or found[0] != expected):
+                errors.append(f"vram voltage mismatch: {vtype} needs {expected} V, rail is {found[0]} V")
+            elif "voltage_v" not in vram and not found:
+                errors.append(f"vram voltage is unconfirmed: {vtype} needs {expected} V — declare vram.voltage_v={expected} or a power rail named {vtype} with {expected} V")
+
+    # FPGA / memory-type compatibility: the memory controller in the
+    # FPGA only speaks the types its datasheet lists. LIFCL-40 has
+    # no DDR4 (FPGA-DS-02049) — a DDR4 spec on it used to pass.
+    if isinstance(vtype, str) and vtype in VOLTAGES:
+        fpga = spec.get("fpga", {}) if isinstance(spec.get("fpga"), dict) else {}
+        part = fpga.get("part")
+        mem_types = vram_cfg.get("fpga_memory_types", {})
+        if not isinstance(mem_types, dict):
+            mem_types = {}
+        if isinstance(part, str) and part in mem_types:
+            allowed = mem_types[part]
+            if isinstance(allowed, list) and vtype not in allowed:
+                errors.append(f"vram.type {vtype} is not supported by FPGA {part} — allowed types are {allowed} (see kit/config.json fpga_memory_types)")
+        elif isinstance(part, str):
+            warnings.append(f"fpga memory types for {part} are UNVERIFIED — check the FPGA datasheet and add it to kit/config.json fpga_memory_types.")
 
     cap = vram.get("capacity_gb")
     if not is_num(cap) or cap < 1:
