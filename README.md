@@ -2,9 +2,29 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.3.2 — 2026-11-24
+**Version:** 0.3.3 — 2026-11-24
 
 ## Changelog
+
+### v0.3.3 — 2026-11-24
+
+- **JSON root type (P0):** all four check scripts (`pcie_check.py`,
+  `vram_check.py`, `lan_check.py`, `storage_check.py`) now reject a
+  spec whose JSON root is not an object (e.g. a list) with a clean
+  error and exit 2 — they used to crash with a Python traceback.
+- **BAR sizes must be powers of two (P1):** `pcie.bar0_mb` and
+  `pcie.bar2_mb` must be 1/2/4/8/16 and 256/512/1024/... MB — a size
+  like 300 MB used to pass the range check.
+- **Power tree is required (P1):** a spec with no `power.rails` is
+  now an error, not a warning — a missing power tree cannot be
+  checked.
+- **VRAM voltage must be confirmed (P1):** `vram.voltage_v` or a
+  power rail named after the memory type must state the voltage
+  (DDR3 1.5 V, DDR4 1.2 V, DDR5 1.1 V) — an unconfirmed voltage used
+  to pass.
+- Regression fixtures in `kit/examples/`: `regression_bar2_300.json`,
+  `regression_array_root.json`, `regression_no_rails.json`,
+  `regression_vram_no_voltage.json`.
 
 ### v0.3.2 — 2026-11-24
 
