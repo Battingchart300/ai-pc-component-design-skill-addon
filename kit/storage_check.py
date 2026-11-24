@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""storage_check.py — NVMe / SATA checks for an addon spec (v0.2).
+
+The `storage` section is OPTIONAL. If it is absent, this script
+prints a note and exits 0 — it does not fail a board without storage.
+If it is present, it is validated.
+
+Calls require_base.py FIRST. If the base skill is missing, exits 2
+and runs no addon check — this addon does not work without it.
+
+Exit codes: 0 = pass / skipped, 1 = fail, 2 = setup missing.
+Standard library only.
+"""
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def require_base_or_exit(base_skill):
+    cmd = [sys.executable, str(HERE / "require_base.py")]
+    if base_skill:
+        cmd += ["--base-skill", base_skill]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    print(r.stdout, end="")
+    if r.returncode != 0:
+        print("storage_check: ABORTED — base skill missing, no check ran.")
+        return False
+    return True
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Check storage section of an addon spec.")
+    ap.add_argument("spec", help="Addon spec JSON file")
+    ap.add_argument("--base-skill", default=None, help="Path to ai-pcb-design-skill repo")
+    args = ap.parse_args()
+
+    if not require_base_or_exit(args.base_skill):
+        return 2
+
+    try:
+        spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"ERROR: cannot read spec: {e}")
+        return 1
+
+    storage = spec.get("storage")
+    if storage is None:
+        print("NOTE: no 'storage' section in spec — storage_check skipped (not a failure).")
+        print("Audit log: storage_check=SKIP (0 errors, 0 warnings), exit=0")
+        return 0
+    if not isinstance(storage, dict):
+        print("ERROR: 'storage' must be an object")
+        return 1
+
+    errors, warnings = [], []
+
+    nvme = storage.get("nvme")
+    if nvme is not None:
+        if not isinstance(nvme, dict):
+            errors.append("storage.nvme must be an object")
+        else:
+            if nvme.get("connector") != "M.2 M-key":
+                errors.append(f"storage.nvme.connector must be 'M.2 M-key', got {nvme.get('connector')!r}")
+            if nvme.get("lanes") not in (1, 2, 4):
+                errors.append(f"storage.nvme.lanes must be 1/2/4, got {nvme.get('lanes')!r}")
+            if nvme.get("form_factor") not in ("2230", "2242", "2280"):
+                errors.append(f"storage.nvme.form_factor must be 2230/2242/2280, got {nvme.get('form_factor')!r}")
+            if nvme.get("power_v") != 3.3:
+                errors.append(f"storage.nvme.power_v must be 3.3, got {nvme.get('power_v')!r}")
+            if nvme.get("boot") is True:
+                warnings.append("NVMe boot is flagged — verify the host BIOS/firmware supports booting from NVMe before ordering.")
+            # Lane budget: NVMe lanes come from the same PCIe budget.
+            pcie = spec.get("pcie", {}) if isinstance(spec.get("pcie"), dict) else {}
+            if isinstance(pcie.get("lanes"), int) and isinstance(nvme.get("lanes"), int):
+                if nvme["lanes"] >= pcie["lanes"]:
+                    warnings.append(f"NVMe takes {nvme['lanes']} lanes of {pcie['lanes']} total PCIe lanes — write the lane budget in the spec (GPU + NVMe + other).")
+
+    sata = storage.get("sata")
+    if sata is not None:
+        if not isinstance(sata, dict):
+            errors.append("storage.sata must be an object")
+        else:
+            if sata.get("ports") not in (1, 2, 4):
+                errors.append(f"storage.sata.ports must be 1/2/4, got {sata.get('ports')!r}")
+            if sata.get("speed") != "SATA III":
+                errors.append(f"storage.sata.speed must be 'SATA III', got {sata.get('speed')!r}")
+            if sata.get("power_v") not in ([5], [5, 12], [12, 5]):
+                errors.append(f"storage.sata.power_v must list 5 V (SSD) or 5 V + 12 V (HDD), got {sata.get('power_v')!r}")
+
+    if nvme is None and sata is None:
+        warnings.append("storage section is present but has neither 'nvme' nor 'sata' — nothing to check.")
+
+    for e in errors:
+        print(f"ERROR: {e}")
+    for w in warnings:
+        print(f"WARNING: {w}")
+    print(f"Audit log: storage_check={'FAIL' if errors else 'PASS'} ({len(errors)} errors, {len(warnings)} warnings), exit={1 if errors else 0}")
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

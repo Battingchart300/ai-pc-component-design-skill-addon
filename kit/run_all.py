@@ -50,6 +50,16 @@ def main():
         print("Audit log: run_all=FAIL (vram_check), exit=1")
         return 1
 
+    code = run([py, str(HERE / "storage_check.py"), args.addon_spec] + base_args, "storage_check")
+    if code != 0:
+        print("Audit log: run_all=FAIL (storage_check), exit=1")
+        return 1
+
+    code = run([py, str(HERE / "lan_check.py"), args.addon_spec] + base_args, "lan_check")
+    if code != 0:
+        print("Audit log: run_all=FAIL (lan_check), exit=1")
+        return 1
+
     if args.spec:
         # Find the base kit to run its rules_check on the base spec.
         r = subprocess.run(
@@ -72,7 +82,7 @@ def main():
                 return 1
         else:
             print(f"WARNING: base rules_check.py not found at {base_rules} — skipped, listed as a gap.")
-    print("Audit log: run_all=PASS (require_base, pcie_check, vram_check), exit=0")
+    print("Audit log: run_all=PASS (require_base, pcie_check, vram_check, storage_check, lan_check), exit=0")
     return 0
 
 

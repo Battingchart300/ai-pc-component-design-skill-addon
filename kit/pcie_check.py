@@ -52,8 +52,10 @@ def main():
         return 1
 
     gen = pcie.get("generation")
-    if gen not in (3, 4):
-        errors.append(f"pcie.generation must be 3 or 4, got {gen!r}")
+    if gen not in (2, 3, 4):
+        errors.append(f"pcie.generation must be 2, 3 or 4 (2 = Pi 5 HAT only), got {gen!r}")
+    if gen == 2 and pcie.get("lanes") != 1:
+        errors.append(f"pcie generation 2 is Pi 5 HAT only and must be x1, got x{pcie.get('lanes')!r}")
     if pcie.get("lanes") not in (1, 4, 8, 16):
         errors.append(f"pcie.lanes must be 1/4/8/16, got {pcie.get('lanes')!r}")
     if str(pcie.get("class_code", "")).lower() != "0x030000":
@@ -72,6 +74,10 @@ def main():
         errors.append(f"pcie.refclk_mhz must be 100 (HCSL), got {pcie.get('refclk_mhz')!r}")
     if gen == 4 and pcie.get("tandem") is not True:
         errors.append("pcie.tandem must be true on PCIe 4.0 (enumeration under 100 ms, else BIOS ignores the card)")
+    if gen == 3 and pcie.get("tandem") is not True:
+        warnings.append("pcie.tandem is false on PCIe 3.0 — enable Tandem/CvP if the host BIOS enumerates fast.")
+    if gen == 2:
+        warnings.append("PCIe 2.0 x1 is a Pi 5 HAT link (~500 MB/s) — a starter, not a PC card (see SKILL.md §13).")
     if gen == 4 and pcie.get("lanes") == 16:
         warnings.append("PCIe 4.0 x16 on a first custom board is very hard — start at x4/x8 on a dev board (see SKILL.md §1).")
 
@@ -94,6 +100,8 @@ def main():
     layers = board.get("layers")
     if isinstance(layers, int) and gen == 4 and layers < 8:
         errors.append(f"board.layers={layers} is too few for PCIe 4.0 — use 8-14 layers with unbroken GND planes")
+    if isinstance(layers, int) and gen == 2 and layers < 4:
+        errors.append(f"board.layers={layers} is too few for a Pi 5 HAT — use 4-6 layers")
 
     for e in errors:
         print(f"ERROR: {e}")
