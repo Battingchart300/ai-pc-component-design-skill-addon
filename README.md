@@ -2,9 +2,28 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.3.3 — 2026-11-24
+**Version:** 0.3.4 — 2026-11-24
 
 ## Changelog
+
+### v0.3.4 — 2026-11-24
+
+Codex audit fixes (ChatGPT Codex / GPT-6 audit of v0.3.3):
+
+- **VRAM voltage contradiction is now an error** — the power-rail
+  cross-check runs always (a DDR4 rail at 5 V with `vram.voltage_v = 1.2`
+  used to PASS).
+- **FPGA/memory-type compatibility** — new `fpga_memory_types`
+  table in `kit/config.json` (LIFCL-40: DDR3/DDR3L/LPDDR2/LPDDR3
+  only; XCKU5P: DDR4/DDR3). LIFCL-40 + DDR4 used to PASS.
+- **No more tracebacks on wrong `vram.type`** (list/dict is a clean
+  error, exit 1).
+- **Missing `kit/config.json`** is now a setup failure (exit 2),
+  not a silent fallback to defaults.
+- **`lan.phy` must name a PHY chip** — boolean `true` no longer
+  passes.
+- **Docs math fixed (§12.5):** 8,192 chips ~270 W, ~2.2 kW is the
+  whole system.
 
 ### v0.3.3 — 2026-11-24
 
@@ -38,7 +57,7 @@ Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 
 - **MCU-cluster GPU (§12.5, bitluni Supercluster 2 style):**
   one chip per pixel, controller tree (1 per 32 workers), SPI,
   resolution math (320x200 = 64,000 chips), power math
-  (~10 mA per chip, 8,192 chips ~2.2 kW), flashing rig,
+  (~10 mA per chip, 8,192 chips ~270 W, ~2.2 kW whole system), flashing rig,
   raymarching workload, no PCIe / no games. The repo has no
   visible LICENSE — reference only, do not copy its files.
   Plus hardware lessons from the build video: own crystal per
