@@ -4,7 +4,12 @@
 This addon does NOT work without ai-pcb-design-skill v1.2.1+.
 This script finds the base skill and verifies it. Exit codes:
   0 = base skill found, version OK
-  2 = setup missing (base skill not found, or version too old)
+  2 = setup missing (base skill not found, wrong name, or version too old)
+
+The name check is EXACT: it reads the `name:` field from the YAML
+frontmatter of the base SKILL.md and requires it to equal
+"ai-pcb-design-skill". A substring search is not enough — it would
+accept "ai-pcb-design-skill-addon" (this addon itself) as the base.
 
 Search order for the base skill directory:
   1. --base-skill <path> argument
@@ -38,6 +43,24 @@ def parse_version(text):
     return None
 
 
+def parse_frontmatter_name(text):
+    """Read the `name:` field from the YAML frontmatter block at the
+    top of SKILL.md, and return it exactly. Returns None if there is
+    no frontmatter block or no name field.
+
+    Exact match on purpose: a plain substring search
+    (`"name: ai-pcb-design-skill" in text`) would also accept
+    "ai-pcb-design-skill-addon", because the required name is a
+    prefix of it — so the addon itself could pass as its own base.
+    """
+    m = re.match(r"\s*---\s*\n(.*?)\n---", text, re.DOTALL)
+    if not m:
+        return None
+    fm = m.group(1)
+    nm = re.search(r"^name:\s*[\"']?([^\"'\n]+?)[\"']?\s*$", fm, re.MULTILINE)
+    return nm.group(1).strip() if nm else None
+
+
 def find_base_skill(explicit=None):
     """Return (path, version) or (None, None).
 
@@ -63,7 +86,7 @@ def find_base_skill(explicit=None):
         if not skill_md.is_file():
             return None, None
         text = skill_md.read_text(encoding="utf-8", errors="ignore")
-        if f"name: {REQUIRED_NAME}" not in text:
+        if parse_frontmatter_name(text) != REQUIRED_NAME:
             return None, None
         return cand, parse_version(text)
 
@@ -88,7 +111,7 @@ def find_base_skill(explicit=None):
         if not skill_md.is_file():
             continue
         text = skill_md.read_text(encoding="utf-8", errors="ignore")
-        if f"name: {REQUIRED_NAME}" not in text:
+        if parse_frontmatter_name(text) != REQUIRED_NAME:
             continue
         version = parse_version(text)
         return cand, version
