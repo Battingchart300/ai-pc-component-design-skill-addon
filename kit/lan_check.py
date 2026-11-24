@@ -81,8 +81,9 @@ def main():
         errors.append(f"lan.connector must be 'RJ45', got {lan.get('connector')!r}")
     if lan.get("speed") not in ("1GbE", "2.5GbE"):
         errors.append(f"lan.speed must be '1GbE' or '2.5GbE' (10GbE is advanced, not a first build), got {lan.get('speed')!r}")
-    if not lan.get("phy"):
-        errors.append("lan.phy is required — a MAC must not connect directly to an RJ45 jack (PHY chip needed, with datasheet)")
+    phy = lan.get("phy")
+    if not isinstance(phy, str) or not phy.strip():
+        errors.append("lan.phy must name a PHY chip (e.g. 'RTL8211F') — a boolean true is not a part; a MAC must not connect directly to an RJ45 jack (PHY chip needed, with datasheet)")
     if lan.get("magnetics") is not True:
         errors.append("lan.magnetics must be true — magnetics (in the jack or discrete, per PHY datasheet) are required")
     if lan.get("esd") is not True:
