@@ -2,9 +2,13 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.3.0 — 2026-11-24
+**Version:** 0.3.1 — 2026-11-24
 
 ## Changelog
+
+### v0.3.1 — 2026-11-24
+
+- **Pi 5 HAT VRAM fixed to DDR3** — LIFCL-40 has no DDR4 (datasheet FPGA-DS-02049: DDR3 max 1066 MT/s). Example is now 1 GB DDR3-1066, 32-bit, ~4.3 GB/s; config lists the DDR3 type max (2133 MT/s) and the LIFCL-40 cap (1066 MT/s).
 
 ### v0.3.0 — 2026-11-24
 
