@@ -2,9 +2,28 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.3.1 — 2026-11-24
+**Version:** 0.3.2 — 2026-11-24
 
 ## Changelog
+
+### v0.3.2 — 2026-11-24
+
+- **Driver section (§9 rewritten):** the driver ladder
+  (enumeration -> custom Linux PCIe driver -> dumb framebuffer ->
+  Mesa Gallium3D), what "reworking" a driver really means
+  (AMDGPU / i915 / nouveau cannot be pointed at an FPGA; only
+  the Linux / DRM framework is reusable), and why a card
+  without a rung-4 driver gives zero fps in games (§9.3) —
+  plus the PCIe x16 slot requirement (a mini PC has none).
+- **MCU-cluster GPU (§12.5, bitluni Supercluster 2 style):**
+  one chip per pixel, controller tree (1 per 32 workers), SPI,
+  resolution math (320x200 = 64,000 chips), power math
+  (~10 mA per chip, 8,192 chips ~2.2 kW), flashing rig,
+  raymarching workload, no PCIe / no games. The repo has no
+  visible LICENSE — reference only, do not copy its files.
+  Plus hardware lessons from the build video: own crystal per
+  chip (no shared clock), crosstalk rules, blade splitting,
+  respin budget, power as its own project.
 
 ### v0.3.1 — 2026-11-24
 
