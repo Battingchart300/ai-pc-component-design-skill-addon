@@ -5,7 +5,7 @@ description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC c
 
 # ai-pc-component-design-skill-addon
 
-**Version:** 0.2.0 — 2026-11-24
+**Version:** 0.3.0 — 2026-11-24
 **What it is:** an addon skill for designing PC components — a custom
 FPGA GPU, its VRAM, and a custom motherboard / RAM — on top of
 `ai-pcb-design-skill`. It adds only the high-speed, FPGA and
@@ -130,7 +130,7 @@ spec (this section). The kit example is
   "fpga": {"part": "XCKU5P", "family": "Kintex UltraScale+"},
   "vram": {
     "type": "DDR4", "capacity_gb": 8,
-    "bus_width_bits": 64, "data_rate_mt_s": 3200
+    "bus_width_bits": 64, "data_rate_mt_s": 2666
   },
   "power": {
     "slot_w": 75, "aux_w": 150, "aux_connector": "8-pin PCIe",
@@ -227,6 +227,18 @@ Bandwidth, not capacity, is the bottleneck:
 bandwidth_GBs = (bus_width_bits / 8) * data_rate_MTs / 1000
 # example: 64-bit DDR4-3200 -> 8 * 3200 / 1000 = 25.6 GB/s
 ```
+
+**The FPGA caps the rate, not just the memory:** the memory
+controller inside the FPGA may be slower than the memory chips.
+Example: Kintex UltraScale+ XCKU5P runs DDR4 at most **2666 MT/s**
+(AMD product page + UG583, mid-speed grade) — a DDR4-3200 spec
+on that FPGA is wrong, even though DDR4-3200 memory exists.
+`kit/vram_check.py` enforces the cap from `kit/config.json`
+(`fpga_max_ddr_mt_s`, with a datasheet source) or from
+`fpga.max_ddr_mt_s` in the spec itself (with `max_ddr_source`
+citing the datasheet). An FPGA part with no entry anywhere is
+**UNVERIFIED** — check its datasheet and add the value before
+trusting the design.
 
 **Check with the kit:** `kit/vram_check.py` computes the
 bandwidth from the spec and compares it with the framebuffer
@@ -325,7 +337,7 @@ PCIe IP block:
 
 | Field | Value |
 |---|---|
-| Class Code | **0x030000** — Display Controller, VGA-compatible (0x038000 = 3D controller without its own display output) |
+| Class Code | **0x030000** — Display Controller, VGA-compatible. (0x030200 = 3D controller, 0x038000 = other display controller — not the same thing.) |
 | Vendor ID / Device ID | 16-bit each. For dev/test, the FPGA vendor ID (AMD/Xilinx 0x10EE, Intel 0x1172). The OS pairs the driver by these numbers. |
 | BAR0 | **1–16 MB** — control registers (commands, resolution, status). |
 | BAR2 | **256 MB – 8 GB** — VRAM / framebuffer, directly writable by the CPU. |
@@ -450,12 +462,12 @@ no installation needed. Exit codes: `0` = pass, `1` = fail,
 
 | Script | What it checks |
 |---|---|
-| `require_base.py` | Finds `ai-pcb-design-skill` (sibling folder, `AI_PCB_SKILL_PATH`, or `--base-skill`), checks `SKILL.md` exists and version >= 1.2.1. Exit 2 if missing. |
-| `pcie_check.py` | Addon spec: PCIe generation/lanes, class code, Vendor/Device ID, BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot+aux power budget. Accepts gen 2/3 x1 for a Pi 5 HAT (§13) and gen 3/4 for a PC card. Calls `require_base.py` first. |
-| `vram_check.py` | Addon spec: VRAM type/voltage match, capacity, bus width, data rate, bandwidth calculation, framebuffer demand. Calls `require_base.py` first. |
+| `require_base.py` | Finds `ai-pcb-design-skill` (sibling folder, `AI_PCB_SKILL_PATH`, or `--base-skill`), reads the `name:` field from the YAML frontmatter of its `SKILL.md` and requires it to equal exactly `ai-pcb-design-skill`, version >= 1.2.1. Exit 2 if missing, misnamed or old. |
+| `pcie_check.py` | Addon spec: PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W, no connector = 0 W), rails with finite non-negative values, board layers required. Accepts gen 2/3 x1 for a Pi 5 HAT (§13) and gen 3/4 for a PC card. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
+| `vram_check.py` | Addon spec: VRAM type/voltage match (checks `vram.voltage_v` when present, else the power rail), capacity, bus width, data rate with type limits (DDR4 max 3200, DDR5 max 6400 MT/s) and the FPGA cap (`fpga.max_ddr_mt_s` from the spec with a datasheet citation, else `kit/config.json` — XCKU5P max 2666 MT/s per AMD; other parts UNVERIFIED), bandwidth calculation, framebuffer demand. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
 | `storage_check.py` (v0.2) | Addon spec, optional `storage` section: NVMe (M.2 M-key, PCIe lanes, 3.3 V, boot flag) and SATA (SATA III, 100 Ω pairs, power). Skips with a note if no storage section. Calls `require_base.py` first. |
 | `lan_check.py` (v0.2) | Addon spec, optional `lan` section: speed 1/2.5 GbE, PHY present, magnetics present, ESD present. Skips with a note if no LAN section. Calls `require_base.py` first. |
-| `run_all.py` | Runs `require_base.py`, `pcie_check.py`, `vram_check.py`, `storage_check.py`, `lan_check.py`, then the base `rules_check.py` on the base spec if `--spec` is given. Prints an audit log. |
+| `run_all.py` | Runs `require_base.py`, `pcie_check.py`, `vram_check.py`, `storage_check.py`, `lan_check.py`, then the base `rules_check.py` on the base spec if `--spec` is given. Prints an audit log. A missing kit script exits 2 with the file named — never a silent PASS. |
 
 ```bash
 # from this repo root
@@ -646,6 +658,12 @@ begin a custom GPU / compute-field board.
   — PCIe generation 2 (or 3 if overclocked), lanes 1, FFC
   connector, 4 layers, bridge FPGA + 32 workers. `pcie_check.py`
   accepts generation 2/3 with lanes 1 for a Pi 5 HAT (see §11).
+- **One lane, one user:** the Pi 5 has exactly ONE PCIe lane.
+  It belongs to the FPGA bridge OR to an NVMe SSD — not both at
+  once. The example spec has no NVMe section for that reason.
+  If you want both, add a PCIe switch (see §12.2) and write the
+  lane budget in the spec; a lane used twice is a short in the
+  plan, not a saving (see also §14).
 
 ---
 
@@ -675,8 +693,8 @@ option.
 - **Do not share lanes silently:** an M.2 slot that takes PCIe
   lanes takes them from the GPU / switch budget (§3, §12.2).
   Write the lane budget in the spec: total lanes in = GPU lanes
-  + NVMe lanes + other lanes. A lane used twice is a short in
-  the plan, not a saving.
+  + NVMe lanes + other lanes. A lane used twice is a short in the
+  plan, not a saving.
 - **Check:** `kit/storage_check.py` validates the storage
   section (type, lanes, connector, power, boot flag).
 
@@ -770,6 +788,67 @@ datasheet — never a guessed part.
 - NVMe / SATA / LAN (§14–§15) need their own controller, PHY
   and driver. A connector without the chip behind it is an
   empty slot.
+
+---
+
+## 18. Legal — read this first (not legal advice)
+
+I am not a lawyer. This section is a short list of risks, not
+legal advice — when in doubt, ask a real lawyer or do not do it.
+
+- **Donor schematics / boardview from forums:** leaked
+  schematics and boardview files may be copyrighted or trade
+  secrets. Use only legally obtained material: official
+  reference designs, public documentation, and your own
+  measurements of your own card.
+- **VBIOS:** the VBIOS of a donor card is copyrighted firmware.
+  Use it only on your own card for your own lab use. Do not
+  copy it, share it or distribute it.
+- **Vendor ID:** `0x10EE` belongs to AMD/Xilinx. Using it in a
+  lab prototype is fine. Selling a board needs your own Vendor
+  ID from PCI-SIG.
+- **Selling in the EU:** a board sold in the EU needs CE/EMC,
+  RoHS, WEEE, and RED if it has WiFi/BT. This skill does not
+  cover certification — budget for it before selling anything.
+
+---
+
+## Changelog
+
+### v0.3.0 — 2026-11-24
+
+- **Validation hardened (reviews of v0.2.0):** `require_base.py`
+  now reads the `name:` field from the base `SKILL.md` YAML
+  frontmatter and requires an exact match — a misnamed skill
+  (including this addon itself) no longer passes as the base.
+  `run_all.py` fails (exit 2) if a kit script is missing,
+  instead of silently passing. Missing spec file / invalid JSON
+  exits 2 in every check script.
+- **Power limits enforced:** slot max 75 W, 6-pin aux 75 W,
+  8-pin aux 150 W, USB-C 100 W, no connector = 0 W aux.
+  Vendor/Device ID must be exactly 4 hex digits (`0xZZZZ`
+  fails). Rails must have finite non-negative values; board
+  layers are required. Bad values fail cleanly (exit 1), never
+  with a Python traceback.
+- **VRAM limits enforced:** `vram.voltage_v` is now checked
+  against the type (DDR4 1.2 V, DDR5 1.1 V, DDR3 1.5 V); data
+  rate limits per type (DDR4 max 3200, DDR5 max 6400 MT/s) plus
+  the FPGA cap (`fpga.max_ddr_mt_s`, XCKU5P max 2666 MT/s per
+  AMD — other parts UNVERIFIED). Example spec fixed to
+  DDR4-2666 (21.3 GB/s).
+- **Class code fixed (§7.1):** 0x030000 VGA, 0x030200 3D
+  controller, 0x038000 other display controller (was wrong).
+- **Pi 5 HAT lane fix (§13):** the single lane belongs to the
+  FPGA bridge OR NVMe, not both — NVMe removed from the Pi 5
+  HAT example.
+- **Legal section (§18)** and CI (`.github/workflows/ci.yml`):
+  kit checks on both examples, Python 3.9–3.13, plus a
+  misnamed-base negative test.
+
+### v0.2.0 — 2026-11-24
+
+- Three GPU paths (§12), Pi 5 HAT (§13), storage (§14), LAN
+  (§15), extra PC I/O (§16).
 
 ---
 
