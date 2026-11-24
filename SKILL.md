@@ -5,7 +5,7 @@ description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC c
 
 # ai-pc-component-design-skill-addon
 
-**Version:** 0.3.3 — 2026-11-24
+**Version:** 0.3.4 — 2026-11-24
 **What it is:** an addon skill for designing PC components — a custom
 FPGA GPU, its VRAM, and a custom motherboard / RAM — on top of
 `ai-pcb-design-skill`. It adds only the high-speed, FPGA and
@@ -515,7 +515,9 @@ no installation needed. Exit codes: `0` = pass, `1` = fail,
 |---|---|
 | `require_base.py` | Finds `ai-pcb-design-skill` (sibling folder, `AI_PCB_SKILL_PATH`, or `--base-skill`), reads the `name:` field from the YAML frontmatter of its `SKILL.md` and requires it to equal exactly `ai-pcb-design-skill`, version >= 1.2.1. Exit 2 if missing, misnamed or old. |
 | `pcie_check.py` | Addon spec: PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W, no connector = 0 W), rails with finite non-negative values, board layers required. Accepts gen 2/3 x1 for a Pi 5 HAT (§13) and gen 3/4 for a PC card. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
-| `vram_check.py` | Addon spec: VRAM type/voltage match (checks `vram.voltage_v` when present, else the power rail), capacity, bus width, data rate with type limits (DDR3 max 2133, DDR4 max 3200, DDR5 max 6400 MT/s) and the FPGA cap (`fpga.max_ddr_mt_s` from the spec with a datasheet citation, else `kit/config.json` — XCKU5P max 2666 MT/s per AMD, LIFCL-40 max 1066 MT/s per Lattice; other parts UNVERIFIED), bandwidth calculation, framebuffer demand. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
+| `vram_check.py` | Addon spec: VRAM type/voltage match (checks `vram.voltage_v` and always cross-checks the power rail
+  against the expected voltage for the type; enforces FPGA/memory-type
+  compatibility (`fpga_memory_types` in `kit/config.json`)), capacity, bus width, data rate with type limits (DDR3 max 2133, DDR4 max 3200, DDR5 max 6400 MT/s) and the FPGA cap (`fpga.max_ddr_mt_s` from the spec with a datasheet citation, else `kit/config.json` — XCKU5P max 2666 MT/s per AMD, LIFCL-40 max 1066 MT/s per Lattice; other parts UNVERIFIED), bandwidth calculation, framebuffer demand. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
 | `storage_check.py` (v0.2) | Addon spec, optional `storage` section: NVMe (M.2 M-key, PCIe lanes, 3.3 V, boot flag) and SATA (SATA III, 100 Ω pairs, power). Skips with a note if no storage section. Calls `require_base.py` first. |
 | `lan_check.py` (v0.2) | Addon spec, optional `lan` section: speed 1/2.5 GbE, PHY present, magnetics present, ESD present. Skips with a note if no LAN section. Calls `require_base.py` first. |
 | `run_all.py` | Runs `require_base.py`, `pcie_check.py`, `vram_check.py`, `storage_check.py`, `lan_check.py`, then the base `rules_check.py` on the base spec if `--spec` is given. Prints an audit log. A missing kit script exits 2 with the file named — never a silent PASS. |
@@ -699,8 +701,10 @@ no monitor output.
 - Resolution math: pixels = chips. 320x200 needs 64,000 chips
   (~$8,000 just for the MCUs); Full HD would need 2M+ chips.
   One chip per pixel does not scale to HD.
-- Power: ~10 mA per worker at 3.3 V. The 8,192-chip prototype
-  draws ~2,161 W (~655 A at 3.3 V) — a 3 kW ATX PSU + custom
+- Power: ~10 mA per worker at 3.3 V — the 8,192 workers alone
+  draw ~270 W (~82 A). The whole 8,192-chip prototype draws
+  ~2,161 W (~655 A at 3.3 V, workers + controllers + LEDs +
+  converters) — a 3 kW ATX PSU + custom
   12 V -> 3.3 V buck converters. Power is the first wall, not
   logic.
 - Programming: flashing thousands of chips by hand takes weeks.
@@ -964,6 +968,28 @@ legal advice — when in doubt, ask a real lawyer or do not do it.
 
 ## Changelog
 
+### v0.3.4 — 2026-11-24
+
+Codex audit fixes (ChatGPT Codex / GPT-6 audit of v0.3.3 — 160 tests):
+
+- **VRAM voltage contradiction is now an error:** the power-rail
+  cross-check runs always, not only when `vram.voltage_v` is absent
+  — a DDR4 rail at 5 V with `vram.voltage_v = 1.2` used to PASS.
+- **FPGA/memory-type compatibility:** new `fpga_memory_types` table
+  in `kit/config.json` (LIFCL-40: DDR3/DDR3L/LPDDR2/LPDDR3 only,
+  XCKU5P: DDR4/DDR3) — a type the FPGA does not support is an error
+  (LIFCL-40 + DDR4 used to PASS).
+- **No more tracebacks on wrong types:** `vram.type` given as a list
+  or dict is a clean error (exit 1), not a Python traceback.
+- **Missing `kit/config.json` is a setup failure:** exit 2 with a
+  clear error — the scripts used to fall back to built-in defaults
+  silently.
+- **`lan.phy` must name a PHY chip:** a boolean `true` used to pass;
+  now it must be a non-empty string (a part name).
+- **Docs math fixed (§12.5):** 8,192 chips at ~10 mA × 3.3 V is
+  ~270 W for the chips alone; ~2.2 kW is the whole prototype system
+  (controllers, LEDs, converters, fans).
+
 ### v0.3.3 — 2026-11-24
 
 - **JSON root type (P0):** all four check scripts (`pcie_check.py`,
@@ -996,7 +1022,7 @@ legal advice — when in doubt, ask a real lawyer or do not do it.
 - **MCU-cluster GPU (§12.5, bitluni Supercluster 2 style):**
   one chip per pixel, controller tree (1 per 32 workers), SPI,
   resolution math (320x200 = 64,000 chips), power math
-  (~10 mA per chip, 8,192 chips ~2.2 kW), flashing rig,
+  (~10 mA per chip, 8,192 chips ~270 W, ~2.2 kW whole system), flashing rig,
   raymarching workload, no PCIe / no games. The repo has no
   visible LICENSE — reference only, do not copy its files.
   Plus hardware lessons from the build video: own crystal per
