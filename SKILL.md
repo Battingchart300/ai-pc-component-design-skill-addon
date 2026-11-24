@@ -5,7 +5,7 @@ description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC c
 
 # ai-pc-component-design-skill-addon
 
-**Version:** 0.3.0 — 2026-11-24
+**Version:** 0.3.1 — 2026-11-24
 **What it is:** an addon skill for designing PC components — a custom
 FPGA GPU, its VRAM, and a custom motherboard / RAM — on top of
 `ai-pcb-design-skill`. It adds only the high-speed, FPGA and
@@ -233,6 +233,11 @@ controller inside the FPGA may be slower than the memory chips.
 Example: Kintex UltraScale+ XCKU5P runs DDR4 at most **2666 MT/s**
 (AMD product page + UG583, mid-speed grade) — a DDR4-3200 spec
 on that FPGA is wrong, even though DDR4-3200 memory exists.
+Lattice CrossLink-NX LIFCL-40 runs DDR3 at most **1066 MT/s**
+(datasheet FPGA-DS-02049: DDR3/DDR3L/LPDDR2/LPDDR3 up to 1066 Mbps
+x16) — it does **not** support DDR4 at all, so a DDR4 spec on that
+FPGA is wrong; the Pi 5 HAT example uses 1 GB DDR3-1066, 32-bit
+(2x 4 Gb chips), ~4.3 GB/s.
 `kit/vram_check.py` enforces the cap from `kit/config.json`
 (`fpga_max_ddr_mt_s`, with a datasheet source) or from
 `fpga.max_ddr_mt_s` in the spec itself (with `max_ddr_source`
@@ -464,7 +469,7 @@ no installation needed. Exit codes: `0` = pass, `1` = fail,
 |---|---|
 | `require_base.py` | Finds `ai-pcb-design-skill` (sibling folder, `AI_PCB_SKILL_PATH`, or `--base-skill`), reads the `name:` field from the YAML frontmatter of its `SKILL.md` and requires it to equal exactly `ai-pcb-design-skill`, version >= 1.2.1. Exit 2 if missing, misnamed or old. |
 | `pcie_check.py` | Addon spec: PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W, no connector = 0 W), rails with finite non-negative values, board layers required. Accepts gen 2/3 x1 for a Pi 5 HAT (§13) and gen 3/4 for a PC card. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
-| `vram_check.py` | Addon spec: VRAM type/voltage match (checks `vram.voltage_v` when present, else the power rail), capacity, bus width, data rate with type limits (DDR4 max 3200, DDR5 max 6400 MT/s) and the FPGA cap (`fpga.max_ddr_mt_s` from the spec with a datasheet citation, else `kit/config.json` — XCKU5P max 2666 MT/s per AMD; other parts UNVERIFIED), bandwidth calculation, framebuffer demand. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
+| `vram_check.py` | Addon spec: VRAM type/voltage match (checks `vram.voltage_v` when present, else the power rail), capacity, bus width, data rate with type limits (DDR3 max 2133, DDR4 max 3200, DDR5 max 6400 MT/s) and the FPGA cap (`fpga.max_ddr_mt_s` from the spec with a datasheet citation, else `kit/config.json` — XCKU5P max 2666 MT/s per AMD, LIFCL-40 max 1066 MT/s per Lattice; other parts UNVERIFIED), bandwidth calculation, framebuffer demand. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
 | `storage_check.py` (v0.2) | Addon spec, optional `storage` section: NVMe (M.2 M-key, PCIe lanes, 3.3 V, boot flag) and SATA (SATA III, 100 Ω pairs, power). Skips with a note if no storage section. Calls `require_base.py` first. |
 | `lan_check.py` (v0.2) | Addon spec, optional `lan` section: speed 1/2.5 GbE, PHY present, magnetics present, ESD present. Skips with a note if no LAN section. Calls `require_base.py` first. |
 | `run_all.py` | Runs `require_base.py`, `pcie_check.py`, `vram_check.py`, `storage_check.py`, `lan_check.py`, then the base `rules_check.py` on the base spec if `--spec` is given. Prints an audit log. A missing kit script exits 2 with the file named — never a silent PASS. |
@@ -654,6 +659,10 @@ begin a custom GPU / compute-field board.
   ~900 MB/s (PCIe 3.0), vs PCIe 4.0 x16 at ~32,000 MB/s on a PC.
   For prototyping your architecture, writing your own driver
   and rendering 720p/1080p, that is plenty.
+- **VRAM is DDR3, not DDR4:** the CrossLink-NX bridge (LIFCL-40)
+  supports DDR3/DDR3L/LPDDR2/LPDDR3 only, up to 1066 MT/s — no
+  DDR4 (datasheet FPGA-DS-02049). The example uses 1 GB DDR3-1066,
+  32-bit (2x 4 Gb chips), ~4.3 GB/s.
 - **Spec for a Pi 5 HAT:** see `kit/examples/spec_pi5_hat.json`
   — PCIe generation 2 (or 3 if overclocked), lanes 1, FFC
   connector, 4 layers, bridge FPGA + 32 workers. `pcie_check.py`
@@ -693,8 +702,8 @@ option.
 - **Do not share lanes silently:** an M.2 slot that takes PCIe
   lanes takes them from the GPU / switch budget (§3, §12.2).
   Write the lane budget in the spec: total lanes in = GPU lanes
-  + NVMe lanes + other lanes. A lane used twice is a short in the
-  plan, not a saving.
+  + NVMe lanes + other lanes. A lane used twice is a short in
+  the plan, not a saving.
 - **Check:** `kit/storage_check.py` validates the storage
   section (type, lanes, connector, power, boot flag).
 
@@ -814,6 +823,17 @@ legal advice — when in doubt, ask a real lawyer or do not do it.
 ---
 
 ## Changelog
+
+### v0.3.1 — 2026-11-24
+
+- **Pi 5 HAT VRAM fixed to DDR3:** the LIFCL-40 bridge does **not**
+  support DDR4 (datasheet FPGA-DS-02049: DDR3/DDR3L/LPDDR2/LPDDR3
+  up to 1066 Mbps x16). The Pi 5 HAT example was wrongly DDR4-1600;
+  it is now 1 GB DDR3-1066, 32-bit (2x 4 Gb chips), ~4.3 GB/s, with
+  the DDR3 rail at 1.5 V. `kit/config.json` now lists the DDR3 type
+  max (2133 MT/s) and the LIFCL-40 FPGA cap (1066 MT/s), and §5 /
+  §13 say so. The XCKU5P example stays DDR4-2666 — that FPGA does
+  support DDR4.
 
 ### v0.3.0 — 2026-11-24
 
