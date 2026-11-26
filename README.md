@@ -2,9 +2,32 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.3.4 — 2026-11-24
+**Version:** 0.3.5 — 2026-11-25
 
 ## Changelog
+
+### v0.3.5 — 2026-11-25
+
+Codex audit wave 2 (ChatGPT Codex / GPT-6 audit of v0.3.3):
+
+- **Shared PCIe lane is now an error** — `storage_check.py`
+  FAILs when the FPGA bridge + NVMe need more lanes than the
+  spec declares (bridge ≥ 1 lane; NVMe fits only when 1 +
+  `nvme.lanes` <= `pcie.lanes`). A switch is declared as
+  `pcie.switch: {"part": "<switch chip>"}` (part must be a
+  non-empty string). New regression fixtures:
+  `regression_lane_share.json` (must FAIL) and
+  `regression_lane_switch.json` (must PASS — verified switch
+  part Broadcom PEX8612-BB50BC). Shipped examples unchanged in
+  result (HAT has no NVMe; main spec still passes).
+- **Credit line** — "Made by PTS6845 —
+  https://battingchart300.github.io" at the bottom of SKILL.md
+  and README.md, plus a `CREDIT` constant in `kit/run_all.py`
+  printed in the audit-log footer. No online check, no popups,
+  no behaviour change.
+- **CI** — Python 3.9 dropped from the matrix (EOL since Oct
+  2025; not available on ubuntu-latest / Ubuntu 26.04, every run
+  failed before any check ran). Matrix is now 3.10–3.13.
 
 ### v0.3.4 — 2026-11-24
 
@@ -123,7 +146,7 @@ ai-pc-component-design-skill-addon/
 ├── SKILL.md            # the addon skill (the whole workflow)
 ├── README.md           # this file
 ├── LICENSE             # MIT
-├── .github/workflows/ci.yml # CI: kit checks on both examples, Py 3.9-3.13
+├── .github/workflows/ci.yml # CI: kit checks on both examples, Py 3.10-3.13
 └── kit/
     ├── README.md       # kit usage
     ├── config.json     # user-editable thresholds
@@ -186,3 +209,7 @@ it never pretends a check ran when it did not.
 ## License
 
 MIT — see `LICENSE`.
+
+---
+
+Made by PTS6845 — https://battingchart300.github.io

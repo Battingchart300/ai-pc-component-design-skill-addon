@@ -5,7 +5,7 @@ description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC c
 
 # ai-pc-component-design-skill-addon
 
-**Version:** 0.3.4 — 2026-11-24
+**Version:** 0.3.5 — 2026-11-25
 **What it is:** an addon skill for designing PC components — a custom
 FPGA GPU, its VRAM, and a custom motherboard / RAM — on top of
 `ai-pcb-design-skill`. It adds only the high-speed, FPGA and
@@ -514,11 +514,11 @@ no installation needed. Exit codes: `0` = pass, `1` = fail,
 | Script | What it checks |
 |---|---|
 | `require_base.py` | Finds `ai-pcb-design-skill` (sibling folder, `AI_PCB_SKILL_PATH`, or `--base-skill`), reads the `name:` field from the YAML frontmatter of its `SKILL.md` and requires it to equal exactly `ai-pcb-design-skill`, version >= 1.2.1. Exit 2 if missing, misnamed or old. |
-| `pcie_check.py` | Addon spec: PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W, no connector = 0 W), rails with finite non-negative values, board layers required. Accepts gen 2/3 x1 for a Pi 5 HAT (§13) and gen 3/4 for a PC card. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
+| `pcie_check.py` | Addon spec: PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem, ReBAR, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W, no connector = 0 W), rails with finite non-negative values, board layers required. An optional `pcie.switch` must be an object with a non-empty `part` string (the switch chip that lets the bridge and NVMe share lanes, §13/§14). Accepts gen 2/3 x1 for a Pi 5 HAT (§13) and gen 3/4 for a PC card. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
 | `vram_check.py` | Addon spec: VRAM type/voltage match (checks `vram.voltage_v` and always cross-checks the power rail
   against the expected voltage for the type; enforces FPGA/memory-type
   compatibility (`fpga_memory_types` in `kit/config.json`)), capacity, bus width, data rate with type limits (DDR3 max 2133, DDR4 max 3200, DDR5 max 6400 MT/s) and the FPGA cap (`fpga.max_ddr_mt_s` from the spec with a datasheet citation, else `kit/config.json` — XCKU5P max 2666 MT/s per AMD, LIFCL-40 max 1066 MT/s per Lattice; other parts UNVERIFIED), bandwidth calculation, framebuffer demand. Calls `require_base.py` first. A missing spec file or invalid JSON exits 2, not 1. |
-| `storage_check.py` (v0.2) | Addon spec, optional `storage` section: NVMe (M.2 M-key, PCIe lanes, 3.3 V, boot flag) and SATA (SATA III, 100 Ω pairs, power). Skips with a note if no storage section. Calls `require_base.py` first. |
+| `storage_check.py` (v0.2) | Addon spec, optional `storage` section: NVMe (M.2 M-key, PCIe lanes, 3.3 V, boot flag) and SATA (SATA III, 100 Ω pairs, power). Sharing PCIe lanes between the FPGA bridge and NVMe without a declared `pcie.switch` is an error (v0.3.5). Skips with a note if no storage section. Calls `require_base.py` first. |
 | `lan_check.py` (v0.2) | Addon spec, optional `lan` section: speed 1/2.5 GbE, PHY present, magnetics present, ESD present. Skips with a note if no LAN section. Calls `require_base.py` first. |
 | `run_all.py` | Runs `require_base.py`, `pcie_check.py`, `vram_check.py`, `storage_check.py`, `lan_check.py`, then the base `rules_check.py` on the base spec if `--spec` is given. Prints an audit log. A missing kit script exits 2 with the file named — never a silent PASS. |
 
@@ -811,7 +811,14 @@ begin a custom GPU / compute-field board.
   once. The example spec has no NVMe section for that reason.
   If you want both, add a PCIe switch (see §12.2) and write the
   lane budget in the spec; a lane used twice is a short in the
-  plan, not a saving (see also §14).
+  plan, not a saving (see also §14). `storage_check.py` FAILS a
+  spec that puts NVMe on the same lane(s) without a switch
+  (v0.3.5): the bridge needs at least 1 lane, so NVMe fits only
+  when 1 + `nvme.lanes` <= `pcie.lanes`. A switch is declared as
+  `pcie.switch: {"part": "<switch chip>"}`, e.g. Broadcom
+  PEX8612-BB50BC (12-lane Gen2 switch, verified datasheet) — the
+  part must be a non-empty string, and the switch datasheet
+  (port widths, Gen, power) must be checked.
 
 ---
 
@@ -842,7 +849,11 @@ option.
   lanes takes them from the GPU / switch budget (§3, §12.2).
   Write the lane budget in the spec: total lanes in = GPU lanes
   + NVMe lanes + other lanes. A lane used twice is a short in
-  the plan, not a saving.
+  the plan, not a saving. `storage_check.py` enforces it (v0.3.5):
+  the FPGA bridge needs at least 1 lane, so sharing without a
+  declared PCIe switch (`pcie.switch: {"part": "<switch chip>"}`)
+  is an ERROR when 1 + `nvme.lanes` > `pcie.lanes` — on a Pi 5
+  HAT (1 lane) that means bridge OR NVMe, never both (§13).
 - **Check:** `kit/storage_check.py` validates the storage
   section (type, lanes, connector, power, boot flag).
 
@@ -968,6 +979,39 @@ legal advice — when in doubt, ask a real lawyer or do not do it.
 
 ## Changelog
 
+### v0.3.5 — 2026-11-25
+
+Codex audit wave 2 (ChatGPT Codex / GPT-6 audit of v0.3.3):
+
+- **Shared PCIe lane is now an error:** `storage_check.py`
+  FAILs when the FPGA bridge + NVMe need more lanes than the
+  spec declares (bridge needs at least 1 lane, so NVMe fits
+  only when 1 + `nvme.lanes` <= `pcie.lanes`) — sharing without
+  a declared switch used to PASS with a warning. A switch is
+  declared as `pcie.switch: {"part": "<switch chip>"}` (the part
+  must be a non-empty string; `pcie_check.py` rejects a boolean,
+  empty or missing part). New regression fixtures in
+  `kit/examples/`: `regression_lane_share.json` (must FAIL) and
+  `regression_lane_switch.json` (must PASS — verified switch
+  part Broadcom PEX8612-BB50BC, 12-lane Gen2 switch). The shipped
+  Pi 5 HAT example is unchanged (it has no NVMe — one lane =
+  bridge OR NVMe, §13); the main example still passes (NVMe x4
+  + bridge fits in 8 lanes). Note: the Kaggle-tested v3 spec
+  (`test-results/gemma_pi5_hat_spec_v3_2026-11-24.json`) now
+  fails this check at `storage_check` level — test-results is
+  untouched.
+- **Credit line:** "Made by PTS6845 —
+  https://battingchart300.github.io" at the bottom of this file
+  and of README.md, plus a `CREDIT` constant in `kit/run_all.py`
+  printed as one line in the audit-log footer. No online check,
+  no popups, no behaviour change, no `--json` change.
+- **CI:** Python 3.9 dropped from the matrix (EOL since Oct
+  2025; setup-python has no 3.9 on ubuntu-latest / Ubuntu 26.04,
+  so every run failed before any check ran). Matrix is now
+  3.10–3.13; pinning `runs-on: ubuntu-24.04` is documented in
+  the workflow as the one-line alternative if 3.9 is ever needed
+  again.
+
 ### v0.3.4 — 2026-11-24
 
 Codex audit fixes (ChatGPT Codex / GPT-6 audit of v0.3.3 — 160 tests):
@@ -1082,3 +1126,7 @@ Codex audit fixes (ChatGPT Codex / GPT-6 audit of v0.3.3 — 160 tests):
 MIT — see `LICENSE`. The base skill `ai-pcb-design-skill` stays
 a separate repo under its own MIT license. This addon does not
 re-license it.
+
+---
+
+Made by PTS6845 — https://battingchart300.github.io

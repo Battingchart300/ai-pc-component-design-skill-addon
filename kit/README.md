@@ -22,9 +22,9 @@ and runs **no** addon check.
 | Script | What it checks |
 |---|---|
 | `require_base.py` | Base skill present, frontmatter `name:` exactly `ai-pcb-design-skill`, version >= 1.2.1. Exit 2 if missing, misnamed or old. |
-| `pcie_check.py <addon-spec.json>` | PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem on PCIe 4.0, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W), rails finite and non-negative, board layers required. Gen 2/3 x1 accepted for a Pi 5 HAT. Missing file / invalid JSON exits 2. |
+| `pcie_check.py <addon-spec.json>` | PCIe generation/lanes, class code 0x030000, Vendor/Device ID (exactly 4 hex digits), BAR0/BAR2, 85 Ω, 100 MHz, Tandem on PCIe 4.0, slot max 75 W + aux limits (6-pin 75 W, 8-pin 150 W, USB-C 100 W), rails finite and non-negative, board layers required. Optional `pcie.switch` must name the switch chip (non-empty string). Gen 2/3 x1 accepted for a Pi 5 HAT. Missing file / invalid JSON exits 2. |
 | `vram_check.py <addon-spec.json>` | VRAM type/voltage match (`vram.voltage_v` checked when present, else the rail), capacity, bus width, data rate with type limits (DDR4 max 3200, DDR5 max 6400 MT/s) + FPGA cap (`fpga.max_ddr_mt_s`, XCKU5P max 2666 MT/s per AMD), bandwidth in GB/s, BAR2 vs VRAM with ReBAR. Missing file / invalid JSON exits 2. |
-| `storage_check.py <addon-spec.json>` (v0.2) | Optional `storage`: NVMe M.2 M-key / lanes / form factor / 3.3 V / boot flag, SATA III / ports / power. Skips with a note if no storage section. Missing file / invalid JSON exits 2. |
+| `storage_check.py <addon-spec.json>` (v0.2) | Optional `storage`: NVMe M.2 M-key / lanes / form factor / 3.3 V / boot flag, SATA III / ports / power. NVMe lane sharing with the FPGA bridge without a declared `pcie.switch` is an error (v0.3.5). Skips with a note if no storage section. Missing file / invalid JSON exits 2. |
 | `lan_check.py <addon-spec.json>` (v0.2) | Optional `lan`: RJ45, 1/2.5 GbE, PHY, magnetics, ESD. Skips with a note if no LAN section. Missing file / invalid JSON exits 2. |
 | `run_all.py` | Runs require_base, pcie_check, vram_check, storage_check, lan_check, then the base `rules_check.py` if `--spec` (base spec) is given. A missing kit script exits 2 with the file named — never a silent PASS. |
 
@@ -63,3 +63,10 @@ lane belongs to the FPGA bridge, see SKILL.md §13).
   Must FAIL in `pcie_check.py` (power tree required).
 - `examples/regression_vram_no_voltage.json` — DDR4 with no voltage
   declared anywhere. Must FAIL in `vram_check.py`.
+- `examples/regression_lane_share.json` — Pi 5 HAT spec + NVMe x1,
+  no switch (1 lane total, bridge + NVMe need 2). Must FAIL in
+  `storage_check.py` (Codex audit wave 2).
+- `examples/regression_lane_switch.json` — same spec with
+  `pcie.switch: {"part": "PEX8612-BB50BC"}` declared. Must PASS
+  `storage_check.py` (with a warning to verify the switch
+  datasheet) and `pcie_check.py`.

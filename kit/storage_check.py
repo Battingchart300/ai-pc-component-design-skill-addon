@@ -91,11 +91,35 @@ def main():
                 errors.append(f"storage.nvme.power_v must be 3.3, got {nvme.get('power_v')!r}")
             if nvme.get("boot") is True:
                 warnings.append("NVMe boot is flagged — verify the host BIOS/firmware supports booting from NVMe before ordering.")
-            # Lane budget: NVMe lanes come from the same PCIe budget.
+            # Lane budget: NVMe lanes come from the same PCIe budget
+            # as the FPGA bridge. The bridge endpoint always occupies
+            # at least 1 host lane, so NVMe fits only when
+            # 1 (bridge) + nvme.lanes <= pcie.lanes. Sharing the
+            # lane(s) without a declared PCIe switch is an ERROR
+            # (v0.3.5, Codex audit wave 2) — a lane used twice is a
+            # short in the plan, not a saving (SKILL.md §13/§14).
             pcie = spec.get("pcie", {}) if isinstance(spec.get("pcie"), dict) else {}
-            if isinstance(pcie.get("lanes"), int) and isinstance(nvme.get("lanes"), int):
-                if nvme["lanes"] >= pcie["lanes"]:
-                    warnings.append(f"NVMe takes {nvme['lanes']} lanes of {pcie['lanes']} total PCIe lanes — write the lane budget in the spec (GPU + NVMe + other).")
+            switch = pcie.get("switch")
+            has_switch = (isinstance(switch, dict)
+                          and isinstance(switch.get("part"), str)
+                          and switch["part"].strip() != "")
+            total = pcie.get("lanes")
+            nlanes = nvme.get("lanes")
+            if (isinstance(total, int) and not isinstance(total, bool)
+                    and isinstance(nlanes, int) and not isinstance(nlanes, bool)):
+                if 1 + nlanes > total:
+                    if has_switch:
+                        warnings.append(
+                            f"NVMe shares the PCIe lane(s) with the FPGA bridge via switch "
+                            f"{switch['part'].strip()!r} — verify the switch part and datasheet "
+                            f"(port widths, Gen, power) before ordering; a switch multiplexes, "
+                            f"it does not create bandwidth.")
+                    else:
+                        errors.append(
+                            f"NVMe shares the PCIe lane(s) with the FPGA bridge: the bridge needs "
+                            f"1 lane and NVMe needs {nlanes}, but the spec has only {total} total "
+                            f"lane(s) — declare a PCIe switch (pcie.switch: {{\"part\": \"<switch chip>\"}}) "
+                            f"or drop NVMe (one lane = bridge OR NVMe, see SKILL.md §13/§14).")
 
     sata = storage.get("sata")
     if sata is not None:

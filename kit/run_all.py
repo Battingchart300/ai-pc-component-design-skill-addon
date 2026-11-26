@@ -17,6 +17,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 EXAMPLE = HERE / "examples" / "spec.json"
+# Credit line (v0.3.5): printed once, as the last line, in the
+# audit-log footer. No online check, no popup, no behaviour change.
+CREDIT = "Made by PTS6845 — https://battingchart300.github.io"
 # Every script run_all depends on. Checked up front (fix v0.3.0):
 # a missing check must FAIL, never silently pass.
 CHECKS = ["require_base.py", "pcie_check.py", "vram_check.py",
@@ -83,4 +86,6 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    print(CREDIT)
+    sys.exit(code)

@@ -145,6 +145,16 @@ def main():
         errors.append(f"pcie generation 2 is Pi 5 HAT only and must be x1, got x{pcie.get('lanes')!r}")
     if pcie.get("lanes") not in (1, 4, 8, 16):
         errors.append(f"pcie.lanes must be 1/4/8/16, got {pcie.get('lanes')!r}")
+    # PCIe switch (v0.3.5): optional. When present it must name the
+    # switch chip — a switch is what allows the FPGA bridge and NVMe
+    # to share lanes (see storage_check.py). A boolean / empty /
+    # missing part used to pass silently.
+    if "switch" in pcie:
+        sw = pcie.get("switch")
+        if not isinstance(sw, dict):
+            errors.append(f"pcie.switch must be an object with a 'part' name, got {sw!r}")
+        elif not isinstance(sw.get("part"), str) or not sw["part"].strip():
+            errors.append(f"pcie.switch.part must name a switch chip (e.g. 'PEX8612-BB50BC'), got {sw.get('part')!r}")
     if str(pcie.get("class_code", "")).lower() != "0x030000":
         errors.append(f"pcie.class_code must be 0x030000 (VGA Display Controller), got {pcie.get('class_code')!r}")
     # Vendor / Device ID: exactly 4 hex digits, e.g. 0x10EE.
