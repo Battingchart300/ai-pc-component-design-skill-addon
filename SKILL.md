@@ -5,7 +5,7 @@ description: Addon to ai-pcb-design-skill (REQUIRED, v1.2.1+) for designing PC c
 
 # ai-pc-component-design-skill-addon
 
-**Version:** 0.3.5 — 2026-11-25
+**Version:** 0.3.6 — 2026-11-27
 **What it is:** an addon skill for designing PC components — a custom
 FPGA GPU, its VRAM, and a custom motherboard / RAM — on top of
 `ai-pcb-design-skill`. It adds only the high-speed, FPGA and
@@ -978,6 +978,30 @@ legal advice — when in doubt, ask a real lawyer or do not do it.
 ---
 
 ## Changelog
+
+### v0.3.6 — 2026-11-27
+
+Four-skill audit fixes (3 of the audit's 8 problems — the base
+skill's 4 + the camera `run_all.py` null crash are separate):
+
+- **`pcie.lanes: true` now FAILs** — `pcie_check.py` rejects
+  booleans (and any non-integer) for `lanes` before the 1/4/8/16
+  membership test. `True == 1` in Python, so a boolean used to
+  pass as x1. Same rule as the existing `board.layers` check.
+- **`storage.nvme.lanes: true` now FAILs** — `storage_check.py`
+  rejects booleans (and any non-integer) for `nvme.lanes`
+  before the 1/2/4 membership test, same reason as above.
+- **`lan.phy: "UNVERIFIED"` now FAILs** — `lan_check.py` treats
+  an UNVERIFIED PHY as missing, same strictness as the base
+  skill's BOM rule (case-insensitive, whitespace-tolerant).
+- **New pytest suite** — `tests/` (23 tests, all green):
+  `conftest.py` helpers + `test_pcie_check.py`,
+  `test_storage_check.py`, `test_lan_check.py`,
+  `test_require_base.py`, with one regression fixture per fix
+  in `tests/fixtures/` (`regression_pcie_lanes_bool.json`,
+  `regression_nvme_lanes_bool.json`,
+  `regression_phy_unverified.json`). Run with
+  `PYTHONPATH=$HOME/.local/lib/python3.12/site-packages python3 -m pytest`.
 
 ### v0.3.5 — 2026-11-25
 

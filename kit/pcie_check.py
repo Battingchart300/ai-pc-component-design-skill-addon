@@ -143,8 +143,15 @@ def main():
         errors.append(f"pcie.generation must be 2, 3 or 4 (2 = Pi 5 HAT only), got {gen!r}")
     if gen == 2 and pcie.get("lanes") != 1:
         errors.append(f"pcie generation 2 is Pi 5 HAT only and must be x1, got x{pcie.get('lanes')!r}")
-    if pcie.get("lanes") not in (1, 4, 8, 16):
-        errors.append(f"pcie.lanes must be 1/4/8/16, got {pcie.get('lanes')!r}")
+    lanes = pcie.get("lanes")
+    # lanes must be a positive integer. A boolean is NOT a lane count:
+    # in Python True == 1, so `lanes: true` used to pass the
+    # membership test below (True in (1, 4, 8, 16)). Reject booleans
+    # and non-integers explicitly first (v0.3.6).
+    if isinstance(lanes, bool) or not isinstance(lanes, int):
+        errors.append(f"pcie.lanes must be an integer 1/4/8/16 — a boolean is not a lane count, got {lanes!r}")
+    elif lanes not in (1, 4, 8, 16):
+        errors.append(f"pcie.lanes must be 1/4/8/16, got {lanes!r}")
     # PCIe switch (v0.3.5): optional. When present it must name the
     # switch chip — a switch is what allows the FPGA bridge and NVMe
     # to share lanes (see storage_check.py). A boolean / empty /

@@ -83,8 +83,15 @@ def main():
         else:
             if nvme.get("connector") != "M.2 M-key":
                 errors.append(f"storage.nvme.connector must be 'M.2 M-key', got {nvme.get('connector')!r}")
-            if nvme.get("lanes") not in (1, 2, 4):
-                errors.append(f"storage.nvme.lanes must be 1/2/4, got {nvme.get('lanes')!r}")
+            # lanes must be a positive integer. A boolean is NOT a lane
+            # count: in Python True == 1, so `lanes: true` used to pass
+            # the membership test below (True in (1, 2, 4)). Reject
+            # booleans and non-integers explicitly first (v0.3.6).
+            nlanes = nvme.get("lanes")
+            if isinstance(nlanes, bool) or not isinstance(nlanes, int):
+                errors.append(f"storage.nvme.lanes must be an integer 1/2/4 — a boolean is not a lane count, got {nlanes!r}")
+            elif nlanes not in (1, 2, 4):
+                errors.append(f"storage.nvme.lanes must be 1/2/4, got {nlanes!r}")
             if nvme.get("form_factor") not in ("2230", "2242", "2280"):
                 errors.append(f"storage.nvme.form_factor must be 2230/2242/2280, got {nvme.get('form_factor')!r}")
             if nvme.get("power_v") != 3.3:

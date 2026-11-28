@@ -84,6 +84,11 @@ def main():
     phy = lan.get("phy")
     if not isinstance(phy, str) or not phy.strip():
         errors.append("lan.phy must name a PHY chip (e.g. 'RTL8211F') — a boolean true is not a part; a MAC must not connect directly to an RJ45 jack (PHY chip needed, with datasheet)")
+    elif phy.strip().upper() == "UNVERIFIED":
+        # Same strictness as the base skill's BOM rule (v0.3.6): an
+        # UNVERIFIED part counts as missing — it cannot be ordered
+        # or routed against a datasheet that was never checked.
+        errors.append("lan.phy is 'UNVERIFIED' — a PHY part must be named and verified against its datasheet before ordering; UNVERIFIED counts as missing")
     if lan.get("magnetics") is not True:
         errors.append("lan.magnetics must be true — magnetics (in the jack or discrete, per PHY datasheet) are required")
     if lan.get("esd") is not True:

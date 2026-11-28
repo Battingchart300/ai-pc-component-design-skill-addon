@@ -2,9 +2,26 @@
 
 Addon to `ai-pcb-design-skill` for designing PC components — FPGA GPU on PCIe 4.0, DDR4/DDR5 VRAM, custom motherboard and RAM.
 
-**Version:** 0.3.5 — 2026-11-25
+**Version:** 0.3.6 — 2026-11-27
 
 ## Changelog
+
+### v0.3.6 — 2026-11-27
+
+Four-skill audit fixes (3 problems):
+
+- **`pcie.lanes: true` now FAILs** — `pcie_check.py` rejects
+  booleans (and any non-integer) for `lanes` before the 1/4/8/16
+  test (`True == 1` in Python, so a boolean used to pass as x1).
+- **`storage.nvme.lanes: true` now FAILs** — `storage_check.py`
+  rejects booleans (and any non-integer) for `nvme.lanes`
+  before the 1/2/4 test.
+- **`lan.phy: "UNVERIFIED"` now FAILs** — `lan_check.py` treats
+  an UNVERIFIED PHY as missing, same strictness as the base
+  skill's BOM rule (case-insensitive, whitespace-tolerant).
+- **New pytest suite** — `tests/` (23 tests, all green), one
+  regression fixture per fix in `tests/fixtures/`. Run with
+  `PYTHONPATH=$HOME/.local/lib/python3.12/site-packages python3 -m pytest`.
 
 ### v0.3.5 — 2026-11-25
 
